@@ -1,0 +1,25 @@
+# Web Framework
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+
+# Database
+sqlalchemy==2.0.36
+alembic==1.14.0
+
+# HTTP Client
+httpx==0.28.1
+
+# Vector DB
+chromadb==0.5.23
+
+# Task Queue (MVP用SQLite broker，生产切Redis)
+celery[redis]==5.4.0
+redis==5.2.1
+
+# OpenAI-compatible LLM
+openai==1.58.1
+
+# Utils
+python-dotenv==1.0.1
+pydantic==2.10.4
+pydantic-settings==2.7.1
