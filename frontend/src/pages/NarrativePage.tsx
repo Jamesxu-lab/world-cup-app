@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { fetchMatchDetail, fetchNarrative } from "../api/client";
 import type { MatchDetail, NarrativeResponse } from "../api/client";
@@ -7,6 +7,7 @@ import StyleSwitch from "../components/StyleSwitch";
 import NarrativeCardView from "../components/NarrativeCardView";
 import ChatPanel from "../components/ChatPanel";
 import { getTeamFlag } from "../utils/teamFlags";
+import { BottomNav } from "./HomePage";
 
 type MatchState = {
   matchId: string;
@@ -43,6 +44,10 @@ export default function NarrativePage() {
   const narrative = narrativeState.key === narrativeKey ? narrativeState.data : null;
   const narrativeError = narrativeState.key === narrativeKey ? narrativeState.error : "";
   const loading = Boolean(matchId && !match && !error);
+
+  useLayoutEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, [matchId]);
 
   useEffect(() => {
     if (!matchId) return;
@@ -155,7 +160,7 @@ export default function NarrativePage() {
               <div className="score-hero-nums">
                 {match.home_score ?? "-"} - {match.away_score ?? "-"}
               </div>
-              {match.status === "PEN" && <div className="score-hero-vs">点球决胜</div>}
+              {match.status_code === "PEN" && <div className="score-hero-vs">点球决胜</div>}
             </div>
             <div className="score-hero-team">
               <span className="flag">{getTeamFlag(match.away_team)}</span>
@@ -224,15 +229,7 @@ export default function NarrativePage() {
         <ChatPanel matchId={matchId} />
       )}
 
-      {/* 底部导航 */}
-      <nav className="bottom-nav">
-        <button className="bottom-nav-item" onClick={() => navigate("/")}>
-          <span className="nav-icon">🏠</span>首页
-        </button>
-        <button className="bottom-nav-item" onClick={() => navigate("/predictions")}>
-          <span className="nav-icon">🏆</span>预测
-        </button>
-      </nav>
+      <BottomNav active="" />
     </div>
   );
 }

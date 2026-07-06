@@ -10,11 +10,15 @@ export default function ChatPanel({ matchId }: Props) {
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [streamingText, setStreamingText] = useState("");
+  const messagesRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    const messagesEl = messagesRef.current;
+    if (messagesEl) {
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
   }, [messages, streamingText]);
 
   const handleSend = async () => {
@@ -76,7 +80,7 @@ export default function ChatPanel({ matchId }: Props) {
       </div>
 
       {/* 消息列表 */}
-      <div className="chat-messages">
+      <div className="chat-messages" ref={messagesRef}>
         {messages.length === 0 && !sending && (
           <div className="chat-empty">
             <div className="icon">💬</div>

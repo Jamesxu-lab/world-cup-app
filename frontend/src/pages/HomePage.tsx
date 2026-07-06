@@ -5,14 +5,16 @@ import type { MatchSummary } from "../api/client";
 import MatchCard from "../components/MatchCard";
 
 export default function HomePage() {
+  const navigate = useNavigate();
   const [todayMatches, setTodayMatches] = useState<MatchSummary[]>([]);
   const [yesterdayMatches, setYesterdayMatches] = useState<MatchSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   useEffect(() => {
+    const today = getRelativeDate(0);
     Promise.all([
-      fetchMatches(),
+      fetchMatches(today, { includeUnfinished: true }),
       fetchMatches(getRelativeDate(-1)),
     ])
       .then(([today, yesterday]) => {
@@ -66,6 +68,12 @@ export default function HomePage() {
   return (
     <div style={{ paddingBottom: 80 }}>
       <AppHeader />
+      <div className="home-quick-actions">
+        <button className="home-history-entry" onClick={() => navigate("/history")}>
+          <span>🗓</span>
+          历史比赛
+        </button>
+      </div>
 
       {!hasTodayMatches && !hasYesterdayMatches ? (
         <div className="empty-state">
@@ -77,7 +85,7 @@ export default function HomePage() {
         <>
           {hasTodayMatches && (
             <>
-              <div className="section-title">📅 今日战报</div>
+              <div className="section-title">📅 今日赛程与战报</div>
               <div className="match-list">
                 {todayMatches.map((m) => (
                   <MatchCard key={m.id} match={m} />
@@ -113,7 +121,7 @@ function getRelativeDate(offsetDays: number): string {
   return `${year}-${month}-${day}`;
 }
 
-function AppHeader() {
+export function AppHeader() {
   return (
     <header className="app-header">
       <div className="app-logo">
@@ -128,7 +136,7 @@ function AppHeader() {
   );
 }
 
-function BottomNav({ active }: { active: string }) {
+export function BottomNav({ active }: { active: string }) {
   const navigate = useNavigate();
 
   return (
@@ -138,6 +146,9 @@ function BottomNav({ active }: { active: string }) {
       </button>
       <button className={`bottom-nav-item ${active === "predictions" ? "active" : ""}`} onClick={() => navigate("/predictions")}>
         <span className="nav-icon">🏆</span>预测
+      </button>
+      <button className={`bottom-nav-item ${active === "history" ? "active" : ""}`} onClick={() => navigate("/history")}>
+        <span className="nav-icon">🗓</span>历史
       </button>
     </nav>
   );

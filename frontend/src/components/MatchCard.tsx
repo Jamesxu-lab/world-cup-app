@@ -33,7 +33,7 @@ export default function MatchCard({ match }: Props) {
         </div>
         <div className="match-card-score">
           <div className="score-num">{score}</div>
-          {match.status === "PEN" && <div className="score-label">点球决胜</div>}
+          {match.status_code === "PEN" && <div className="score-label">点球决胜</div>}
         </div>
         <div className="match-card-team">
           <span className="flag">{getTeamFlag(match.away_team)}</span>

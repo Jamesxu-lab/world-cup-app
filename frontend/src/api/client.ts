@@ -19,10 +19,12 @@ export interface MatchSummary {
   home_score: number | null;
   away_score: number | null;
   match_date: string;
+  match_day?: string;
   round: string;
   group_name: string;
   stadium: string;
   status: string;
+  status_code?: string;
   hook: string;
   available_styles: string[];
 }
@@ -68,9 +70,24 @@ export interface NarrativeResponse {
   card_count: number;
 }
 
-export async function fetchMatches(date?: string): Promise<MatchSummary[]> {
-  const params = date ? { date } : {};
+type FetchMatchesOptions = {
+  includeUnfinished?: boolean;
+};
+
+export async function fetchMatches(
+  date?: string,
+  options: FetchMatchesOptions = {}
+): Promise<MatchSummary[]> {
+  const params = {
+    ...(date ? { date } : {}),
+    ...(options.includeUnfinished ? { include_unfinished: true } : {}),
+  };
   const { data } = await api.get("/matches", { params });
+  return data.matches;
+}
+
+export async function fetchMatchHistory(limit = 80): Promise<MatchSummary[]> {
+  const { data } = await api.get("/matches/history", { params: { limit } });
   return data.matches;
 }
 

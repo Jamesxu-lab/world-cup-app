@@ -38,6 +38,8 @@ class Settings(BaseSettings):
     # Match sync
     app_timezone: str = "Asia/Shanghai"
     sync_yesterday_on_startup: bool = True
+    sync_today_on_startup: bool = True
+    match_list_sync_ttl_seconds: int = 300
     sync_startup_with_details: bool = False
 
     # Prediction snapshot sync

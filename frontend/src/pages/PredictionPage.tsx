@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { fetchChampionPrediction } from "../api/client";
 import type { ChampionPredictionResponse, PredictionTeam } from "../api/client";
+import { BottomNav } from "./HomePage";
 
 const driverLabels: Record<keyof PredictionTeam["drivers"], string> = {
   elo: "长期实力",
@@ -14,7 +15,6 @@ const driverLabels: Record<keyof PredictionTeam["drivers"], string> = {
 };
 
 export default function PredictionPage() {
-  const navigate = useNavigate();
   const [prediction, setPrediction] = useState<ChampionPredictionResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -142,14 +142,7 @@ export default function PredictionPage() {
         </p>
       </section>
 
-      <nav className="bottom-nav">
-        <button className="bottom-nav-item" onClick={() => navigate("/")}>
-          <span className="nav-icon">🏠</span>首页
-        </button>
-        <button className="bottom-nav-item active">
-          <span className="nav-icon">🏆</span>预测
-        </button>
-      </nav>
+      <BottomNav active="predictions" />
     </div>
   );
 }
