@@ -4,9 +4,10 @@ import { getTeamFlag } from "../utils/teamFlags";
 
 interface Props {
   match: MatchSummary;
+  interactive?: boolean;
 }
 
-export default function MatchCard({ match }: Props) {
+export default function MatchCard({ match, interactive = true }: Props) {
   const score =
     match.home_score !== null && match.away_score !== null
       ? `${match.home_score} - ${match.away_score}`
@@ -16,12 +17,8 @@ export default function MatchCard({ match }: Props) {
   const stadiumLabel = match.stadium || "";
   const matchLabel = `${match.home_team} ${score} ${match.away_team}，${roundLabel}，${stadiumLabel}`;
 
-  return (
-    <Link
-      className="match-card"
-      to={`/match/${match.id}`}
-      aria-label={`查看比赛详情：${matchLabel}`}
-    >
+  const content = (
+    <>
       {/* 赛事轮次 */}
       <div className="match-card-round">🏟 {roundLabel} · {stadiumLabel}</div>
 
@@ -40,11 +37,24 @@ export default function MatchCard({ match }: Props) {
           <span className="name">{match.away_team}</span>
         </div>
       </div>
+    </>
+  );
 
-      {/* 钩子 */}
-      {match.hook && (
-        <div className="match-card-hook">💬 {match.hook}</div>
-      )}
+  if (!interactive) {
+    return (
+      <article className="match-card match-card-static" aria-label={`比赛结果：${matchLabel}`}>
+        {content}
+      </article>
+    );
+  }
+
+  return (
+    <Link
+      className="match-card"
+      to={`/match/${match.id}`}
+      aria-label={`查看比赛详情：${matchLabel}`}
+    >
+      {content}
     </Link>
   );
 }

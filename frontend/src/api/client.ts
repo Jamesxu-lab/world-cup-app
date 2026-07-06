@@ -29,6 +29,16 @@ export interface MatchSummary {
   available_styles: string[];
 }
 
+export interface MatchHistoryResponse {
+  matches: MatchSummary[];
+  count: number;
+  total: number;
+  limit: number;
+  offset: number;
+  has_more: boolean;
+  next_offset: number | null;
+}
+
 export interface MatchDetail extends MatchSummary {
   city: string;
   events: MatchEvent[];
@@ -86,9 +96,9 @@ export async function fetchMatches(
   return data.matches;
 }
 
-export async function fetchMatchHistory(limit = 80): Promise<MatchSummary[]> {
-  const { data } = await api.get("/matches/history", { params: { limit } });
-  return data.matches;
+export async function fetchMatchHistory(limit = 6, offset = 0): Promise<MatchHistoryResponse> {
+  const { data } = await api.get("/matches/history", { params: { limit, offset } });
+  return data;
 }
 
 export async function fetchMatchDetail(id: string): Promise<MatchDetail> {

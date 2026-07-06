@@ -26,7 +26,7 @@ export default function PredictionPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  const topTeams = useMemo(() => prediction?.teams.slice(0, 10) ?? [], [prediction]);
+  const topTeams = useMemo(() => prediction?.teams.slice(0, 3) ?? [], [prediction]);
   const leader = topTeams[0];
 
   if (loading) {
@@ -87,7 +87,7 @@ export default function PredictionPage() {
 
       <section className="prediction-panel">
         <div className="prediction-section-head">
-          <h3>冠军概率 Top 10</h3>
+          <h3>冠军概率 Top 3</h3>
           <span>{prediction.as_of}</span>
         </div>
         <div className="prediction-list">

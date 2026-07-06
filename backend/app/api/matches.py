@@ -62,22 +62,35 @@ async def list_matches(
 
 @router.get("/matches/history")
 async def list_match_history(
-    limit: int = Query(60, ge=1, le=200, description="最多返回多少场历史完赛"),
+    limit: int = Query(6, ge=1, le=6, description="最多返回多少场历史完赛"),
+    offset: int = Query(0, ge=0, description="从第几场开始返回"),
     db: Session = Depends(get_db),
 ):
-    """获取历史完赛列表。"""
-    matches = (
+    """获取今天之前的历史完赛列表。"""
+    today_start, _ = get_product_day_utc_range(get_today_date())
+    base_query = (
         build_match_query(db)
         .filter(Match.status.in_(COMPLETED_STATUSES))
+        .filter(Match.match_date < today_start)
+    )
+    total = base_query.count()
+    matches = (
+        base_query
         .order_by(Match.match_date.desc())
+        .offset(offset)
         .limit(limit)
         .all()
     )
+    next_offset = offset + len(matches)
 
     return {
         "matches": [serialize_match_summary(match) for match in matches],
         "count": len(matches),
+        "total": total,
         "limit": limit,
+        "offset": offset,
+        "has_more": next_offset < total,
+        "next_offset": next_offset if next_offset < total else None,
     }
 
 

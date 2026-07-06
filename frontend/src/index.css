@@ -186,6 +186,12 @@ body::before {
   outline: 3px solid var(--color-gold-light);
   outline-offset: 3px;
 }
+.match-card-static {
+  cursor: default;
+}
+.match-card-static:active {
+  transform: none;
+}
 .match-card::after {
   content: '';
   position: absolute;
@@ -240,15 +246,6 @@ body::before {
   text-align: center;
   margin-top: 2px;
 }
-.match-card-hook {
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid rgba(0,0,0,0.05);
-  font-size: 12px;
-  color: var(--color-text-secondary);
-  line-height: 1.5;
-}
-
 /* ===== Narrative Page ===== */
 .nav-back {
   padding: 16px 20px 0;
@@ -704,6 +701,11 @@ body::before {
   color: rgba(240,214,138,0.58);
   font-size: 12px;
   margin-top: 2px;
+}
+.history-load-more {
+  display: flex;
+  justify-content: center;
+  padding: 0 16px 24px;
 }
 
 /* ===== Empty & Loading ===== */

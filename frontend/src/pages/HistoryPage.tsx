@@ -5,18 +5,45 @@ import type { MatchSummary } from "../api/client";
 import MatchCard from "../components/MatchCard";
 import { AppHeader, BottomNav } from "./HomePage";
 
+const PAGE_SIZE = 6;
+
 export default function HistoryPage() {
   const navigate = useNavigate();
   const [matches, setMatches] = useState<MatchSummary[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState("");
+  const [nextOffset, setNextOffset] = useState<number | null>(null);
+  const [hasMore, setHasMore] = useState(false);
 
   useEffect(() => {
-    fetchMatchHistory()
-      .then(setMatches)
+    fetchMatchHistory(PAGE_SIZE, 0)
+      .then((data) => {
+        setMatches(data.matches);
+        setHasMore(data.has_more);
+        setNextOffset(data.next_offset);
+      })
       .catch((e) => setError(e.message || "历史比赛加载失败"))
       .finally(() => setLoading(false));
   }, []);
+
+  const loadMore = async () => {
+    if (loadingMore || !hasMore || nextOffset === null) {
+      return;
+    }
+    setLoadingMore(true);
+    setError("");
+    try {
+      const data = await fetchMatchHistory(PAGE_SIZE, nextOffset);
+      setMatches((current) => [...current, ...data.matches]);
+      setHasMore(data.has_more);
+      setNextOffset(data.next_offset);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "历史比赛加载失败");
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   const groupedMatches = useMemo(() => {
     const groups = new Map<string, MatchSummary[]>();
@@ -87,11 +114,19 @@ export default function HistoryPage() {
             <div className="section-title">📆 {formatDay(day)}</div>
             <div className="match-list">
               {dayMatches.map((match) => (
-                <MatchCard key={match.id} match={match} />
+                <MatchCard key={match.id} match={match} interactive={false} />
               ))}
             </div>
           </section>
         ))
+      )}
+
+      {hasMore && (
+        <div className="history-load-more">
+          <button className="chat-send-btn secondary" onClick={loadMore} disabled={loadingMore}>
+            {loadingMore ? "加载中..." : "加载更多"}
+          </button>
+        </div>
       )}
 
       <BottomNav active="history" />
