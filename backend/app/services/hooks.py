@@ -3,6 +3,7 @@
 MVP 策略：优先用叙事卡片的开篇标题；没有叙事数据时用规则兜底。
 """
 from app.models.match import Match, Narrative
+from app.i18n import get_team_cn
 
 
 def generate_hook(match: Match) -> str:
@@ -10,11 +11,15 @@ def generate_hook(match: Match) -> str:
     为一场比赛生成一句话钩子。
     优先级：叙事卡片开篇 > 规则生成
     """
-    # 尝试从已生成的叙事中获取开篇标题
+    # 尝试从已生成的 AI 叙事中获取开篇标题；规则兜底卡片不适合作为列表钩子。
     for narrative in match.narratives:
+        if narrative.model_version == "fallback-v1":
+            continue
         if narrative.style == "funny" and narrative.card_index == 1 and narrative.title:
             return narrative.title
     for narrative in match.narratives:
+        if narrative.model_version == "fallback-v1":
+            continue
         if narrative.style == "formal" and narrative.card_index == 1 and narrative.title:
             return narrative.title
 
@@ -23,8 +28,8 @@ def generate_hook(match: Match) -> str:
 
 
 def _rule_based_hook(match: Match) -> str:
-    home = match.home_team
-    away = match.away_team
+    home = get_team_cn(match.home_team)
+    away = get_team_cn(match.away_team)
     h_score = match.home_score
     a_score = match.away_score
 

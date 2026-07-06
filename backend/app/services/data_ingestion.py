@@ -3,8 +3,15 @@
 """
 from datetime import datetime
 from sqlalchemy.orm import Session
-from app.models.match import Match, MatchEvent, MatchStat, PlayerPerformance
+from app.models.match import Match, MatchEvent, MatchStat, Narrative, PlayerPerformance
 from app.services.football_api import FootballAPI
+from app.services.fallback_narrative import (
+    FALLBACK_MODEL_VERSION,
+    LOCAL_NARRATIVE_MODELS,
+    STYLE_NAMES,
+    build_fallback_narrative,
+    get_local_narrative_model_version,
+)
 
 api = FootballAPI()
 
@@ -107,6 +114,45 @@ def parse_player_performances(api_players: list[dict]) -> list[dict]:
     return result
 
 
+def ensure_fallback_narratives(db: Session, match: Match) -> int:
+    """Create or refresh local reports, while preserving real LLM narratives."""
+    created = 0
+    db.flush()
+    db.expire(match, ["events", "stats", "performances"])
+    model_version = get_local_narrative_model_version(match)
+
+    for style in STYLE_NAMES:
+        existing = db.query(Narrative).filter(
+            Narrative.match_id == match.id,
+            Narrative.style == style,
+        ).all()
+
+        if existing:
+            is_local_generated = all(n.model_version in LOCAL_NARRATIVE_MODELS for n in existing)
+            should_refresh = is_local_generated and any(n.model_version != model_version for n in existing)
+            should_refresh = should_refresh or (is_local_generated and model_version != FALLBACK_MODEL_VERSION)
+            if not is_local_generated or not should_refresh:
+                continue
+            db.query(Narrative).filter(
+                Narrative.match_id == match.id,
+                Narrative.style == style,
+            ).delete(synchronize_session=False)
+
+        for index, card in enumerate(build_fallback_narrative(match, style), start=1):
+            db.add(Narrative(
+                match_id=match.id,
+                style=style,
+                card_index=index,
+                card_type=card.get("card_type"),
+                title=card.get("title"),
+                content=card.get("content"),
+                model_version=model_version,
+            ))
+            created += 1
+
+    return created
+
+
 def save_match_to_db(db: Session, fixture_data: dict, match_data: dict) -> Match:
     """
     将一场比赛的全部数据入库。
@@ -115,14 +161,19 @@ def save_match_to_db(db: Session, fixture_data: dict, match_data: dict) -> Match
     """
     match_dict = parse_fixture_to_match(fixture_data)
 
-    # 检查是否已存在
+    # 检查是否已存在；已有比赛需要刷新比分、状态和明细数据。
     existing = db.query(Match).filter(Match.fixture_id == match_dict["fixture_id"]).first()
     if existing:
-        return existing
-
-    match = Match(**match_dict)
-    db.add(match)
-    db.flush()
+        for key, value in match_dict.items():
+            setattr(existing, key, value)
+        match = existing
+        db.query(MatchEvent).filter(MatchEvent.match_id == match.id).delete(synchronize_session=False)
+        db.query(MatchStat).filter(MatchStat.match_id == match.id).delete(synchronize_session=False)
+        db.query(PlayerPerformance).filter(PlayerPerformance.match_id == match.id).delete(synchronize_session=False)
+    else:
+        match = Match(**match_dict)
+        db.add(match)
+        db.flush()
 
     # 入库事件
     for evt in parse_events(match_data.get("events", [])):
@@ -138,6 +189,9 @@ def save_match_to_db(db: Session, fixture_data: dict, match_data: dict) -> Match
     for perf in parse_player_performances(match_data.get("players", [])):
         perf["match_id"] = match.id
         db.add(PlayerPerformance(**perf))
+
+    db.flush()
+    ensure_fallback_narratives(db, match)
 
     db.commit()
     db.refresh(match)

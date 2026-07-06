@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-label="晨报球搭子 AI 世界杯战报与冠军预测">
+  <defs>
+    <linearGradient id="pitch" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#0d2818"/>
+      <stop offset="52%" stop-color="#1a4d2e"/>
+      <stop offset="100%" stop-color="#2d6a3f"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" x2="1">
+      <stop offset="0%" stop-color="#d4a843"/>
+      <stop offset="100%" stop-color="#f0d68a"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#pitch)"/>
+  <g opacity="0.16" stroke="#ffffff" stroke-width="4" fill="none">
+    <rect x="70" y="70" width="1060" height="490" rx="28"/>
+    <line x1="600" y1="70" x2="600" y2="560"/>
+    <circle cx="600" cy="315" r="92"/>
+    <rect x="70" y="205" width="150" height="220"/>
+    <rect x="980" y="205" width="150" height="220"/>
+  </g>
+  <circle cx="960" cy="150" r="130" fill="#ff6b6b" opacity="0.12"/>
+  <circle cx="220" cy="500" r="150" fill="#f0d68a" opacity="0.12"/>
+  <text x="100" y="210" fill="url(#gold)" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="74" font-weight="800">晨报球搭子</text>
+  <text x="104" y="292" fill="#ffffff" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="42" font-weight="700">AI 世界杯战报与冠军预测</text>
+  <text x="106" y="364" fill="#f0d68a" opacity="0.9" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="30">3 分钟看懂比赛 · 赛后追问 · 概率模型</text>
+  <g transform="translate(930 360)">
+    <circle cx="86" cy="86" r="86" fill="url(#gold)"/>
+    <text x="86" y="114" text-anchor="middle" font-family="Arial, sans-serif" font-size="84">🏆</text>
+  </g>
+</svg>

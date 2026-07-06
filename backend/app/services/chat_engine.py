@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.core.config import get_settings
 from app.models.match import Match, Narrative
 from app.services.chat_prompt import CHAT_SYSTEM, CHAT_USER_TEMPLATE
-from app.i18n import get_team_cn, get_stadium_cn, get_round_cn
+from app.i18n import get_team_cn, get_stadium_cn, get_round_cn, get_status_cn
 
 # ── 持久 OpenAI 客户端 ──
 _settings = get_settings()
@@ -94,6 +94,58 @@ def _build_messages(question: str, context: str, history: list[dict] | None) -> 
     return messages
 
 
+def _fallback_answer(match_id: str, question: str = "") -> str:
+    """LLM 不可用或明细不足时的规则回答。"""
+    from app.core.database import SessionLocal
+
+    db = SessionLocal()
+    try:
+        match = db.query(Match).options(
+            selectinload(Match.events),
+            selectinload(Match.performances),
+        ).filter(Match.id == match_id).first()
+        if not match:
+            return "抱歉，我没找到这场比赛的数据。"
+
+        home = get_team_cn(match.home_team)
+        away = get_team_cn(match.away_team)
+        status = get_status_cn(match.status)
+        if match.home_score is None or match.away_score is None:
+            score = f"{home} vs {away}"
+            result = f"这场比赛目前状态是{status}，还没有比分。"
+        else:
+            score = f"{home} {match.home_score}-{match.away_score} {away}"
+            result = f"当前记录的比分是 {score}，状态是{status}。"
+
+        q = question.strip()
+        if any(word in q for word in ["比分", "结果", "几比几", "赢", "输"]):
+            return result
+        if any(word in q for word in ["最佳", "球员", "谁"]):
+            top = sorted(match.performances, key=lambda p: (p.rating or 0, p.goals or 0), reverse=True)
+            if top:
+                p = top[0]
+                return f"从已同步的球员数据看，{p.player_name} 比较突出：评分 {p.rating}，{p.goals or 0} 球 {p.assists or 0} 助。"
+            return f"{score}。当前本地库还没有这场的球员评分和完整事件，暂时不能可靠判断本场最佳。"
+        if any(word in q for word in ["转折", "关键", "进球"]):
+            goals = [
+                e for e in sorted(match.events, key=lambda e: (e.minute, e.extra_minute or 0))
+                if e.event_type == "goal"
+            ]
+            if goals:
+                lines = []
+                for e in goals[:5]:
+                    extra = f"+{e.extra_minute}" if e.extra_minute else ""
+                    lines.append(f"{e.minute}{extra}' {e.player_name}（{get_team_cn(e.team)}）")
+                return "这场的进球时间线是：" + "；".join(lines) + "。"
+            return f"{score}。当前只同步了基础比分，进球时间线还没入库。"
+        if any(word in q for word in ["战术", "控球", "射门", "阵型"]):
+            return f"{score}。目前本地库缺少控球率、射门、传球和阵型明细，所以只能先基于赛果回答；同步统计后才能做严谨战术分析。"
+
+        return f"{result} 目前这场只有基础赛果和少量明细可用，你可以继续问比分、比赛状态、关键球员或战术，我会按已同步数据回答。"
+    finally:
+        db.close()
+
+
 def chat(
     db: Session,
     match_id: str,
@@ -106,13 +158,16 @@ def chat(
         return "抱歉，我没找到这场比赛的数据。"
 
     messages = _build_messages(question, context, history)
-    response = _client.chat.completions.create(
-        model=_model,
-        messages=messages,
-        temperature=0.5,
-        max_tokens=100,
-    )
-    return response.choices[0].message.content.strip()
+    try:
+        response = _client.chat.completions.create(
+            model=_model,
+            messages=messages,
+            temperature=0.5,
+            max_tokens=100,
+        )
+        return response.choices[0].message.content.strip()
+    except Exception:
+        return _fallback_answer(match_id, question)
 
 
 def chat_stream(
@@ -129,15 +184,23 @@ def chat_stream(
         return
 
     messages = _build_messages(question, context, history)
-    stream = _client.chat.completions.create(
-        model=_model,
-        messages=messages,
-        temperature=0.5,
-        max_tokens=100,
-        stream=True,
-    )
-    for chunk in stream:
-        delta = chunk.choices[0].delta
-        if delta.content:
-            yield f"data: {json.dumps({'token': delta.content})}\n\n"
+    emitted = False
+    try:
+        stream = _client.chat.completions.create(
+            model=_model,
+            messages=messages,
+            temperature=0.5,
+            max_tokens=100,
+            stream=True,
+        )
+        for chunk in stream:
+            delta = chunk.choices[0].delta
+            if delta.content:
+                emitted = True
+                yield f"data: {json.dumps({'token': delta.content})}\n\n"
+        if not emitted:
+            yield f"data: {json.dumps({'token': _fallback_answer(match_id, question)})}\n\n"
+    except Exception:
+        if not emitted:
+            yield f"data: {json.dumps({'token': _fallback_answer(match_id, question)})}\n\n"
     yield "data: [DONE]\n\n"

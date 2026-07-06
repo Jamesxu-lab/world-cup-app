@@ -6,6 +6,19 @@ import { useAppStore } from "../store/useAppStore";
 import StyleSwitch from "../components/StyleSwitch";
 import NarrativeCardView from "../components/NarrativeCardView";
 import ChatPanel from "../components/ChatPanel";
+import { getTeamFlag } from "../utils/teamFlags";
+
+type MatchState = {
+  matchId: string;
+  data: MatchDetail | null;
+  error: string;
+};
+
+type NarrativeState = {
+  key: string;
+  data: NarrativeResponse | null;
+  error: string;
+};
 
 export default function NarrativePage() {
   const { matchId } = useParams<{ matchId: string }>();
@@ -13,38 +26,75 @@ export default function NarrativePage() {
   const currentStyle = useAppStore((s) => s.currentStyle);
   const setStyle = useAppStore((s) => s.setStyle);
 
-  const [match, setMatch] = useState<MatchDetail | null>(null);
-  const [narrative, setNarrative] = useState<NarrativeResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [narrativeError, setNarrativeError] = useState("");
+  const [matchState, setMatchState] = useState<MatchState>({
+    matchId: "",
+    data: null,
+    error: "",
+  });
+  const [narrativeState, setNarrativeState] = useState<NarrativeState>({
+    key: "",
+    data: null,
+    error: "",
+  });
+
+  const narrativeKey = matchId ? `${matchId}:${currentStyle}` : "";
+  const match = matchState.matchId === matchId ? matchState.data : null;
+  const error = matchState.matchId === matchId ? matchState.error : "";
+  const narrative = narrativeState.key === narrativeKey ? narrativeState.data : null;
+  const narrativeError = narrativeState.key === narrativeKey ? narrativeState.error : "";
+  const loading = Boolean(matchId && !match && !error);
 
   useEffect(() => {
     if (!matchId) return;
-    setLoading(true);
-    setError("");
-    setNarrativeError("");
-    setNarrative(null);
+    let cancelled = false;
 
     fetchMatchDetail(matchId)
       .then((m) => {
-        setMatch(m);
-        setLoading(false);
+        if (!cancelled) {
+          setMatchState({ matchId, data: m, error: "" });
+        }
       })
       .catch((e) => {
-        setError(e.message || "加载比赛数据失败");
-        setLoading(false);
-      });
-
-    fetchNarrative(matchId, currentStyle)
-      .then(setNarrative)
-      .catch((e) => {
-        if (e.response?.status === 404) {
-          setNarrativeError("该风格的叙事尚未生成，切换风格试试");
-        } else {
-          setNarrativeError(e.message || "加载叙事失败");
+        if (!cancelled) {
+          setMatchState({
+            matchId,
+            data: null,
+            error: e.message || "加载比赛数据失败",
+          });
         }
       });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [matchId]);
+
+  useEffect(() => {
+    if (!matchId) return;
+    const key = `${matchId}:${currentStyle}`;
+    let cancelled = false;
+
+    fetchNarrative(matchId, currentStyle)
+      .then((data) => {
+        if (!cancelled) {
+          setNarrativeState({ key, data, error: "" });
+        }
+      })
+      .catch((e) => {
+        if (!cancelled) {
+          setNarrativeState({
+            key,
+            data: null,
+            error: e.response?.status === 404
+              ? "该风格的叙事尚未生成，切换风格试试"
+              : e.message || "加载叙事失败",
+          });
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [matchId, currentStyle]);
 
   const handleStyleSwitch = (style: string) => {
@@ -98,7 +148,7 @@ export default function NarrativePage() {
           <div className="score-hero-round">🏆 {roundLabel} · {match.stadium}</div>
           <div className="score-hero-teams">
             <div className="score-hero-team">
-              <span className="flag">{getFlag(match.home_team)}</span>
+              <span className="flag">{getTeamFlag(match.home_team)}</span>
               <span className="name">{match.home_team}</span>
             </div>
             <div className="score-hero-center">
@@ -108,7 +158,7 @@ export default function NarrativePage() {
               {match.status === "PEN" && <div className="score-hero-vs">点球决胜</div>}
             </div>
             <div className="score-hero-team">
-              <span className="flag">{getFlag(match.away_team)}</span>
+              <span className="flag">{getTeamFlag(match.away_team)}</span>
               <span className="name">{match.away_team}</span>
             </div>
           </div>
@@ -179,32 +229,10 @@ export default function NarrativePage() {
         <button className="bottom-nav-item" onClick={() => navigate("/")}>
           <span className="nav-icon">🏠</span>首页
         </button>
-        <button className="bottom-nav-item">
-          <span className="nav-icon">🏆</span>赛事
-        </button>
-        <button className="bottom-nav-item">
-          <span className="nav-icon">👤</span>我的
+        <button className="bottom-nav-item" onClick={() => navigate("/predictions")}>
+          <span className="nav-icon">🏆</span>预测
         </button>
       </nav>
     </div>
   );
-}
-
-/** 简单的队名→国旗映射 */
-function getFlag(team: string): string {
-  const flags: Record<string, string> = {
-    阿根廷: "🇦🇷", 法国: "🇫🇷", 英格兰: "🏴󠁧󠁢󠁥󠁮󠁧󠁿",
-    巴西: "🇧🇷", 德国: "🇩🇪", 西班牙: "🇪🇸",
-    葡萄牙: "🇵🇹", 荷兰: "🇳🇱", 比利时: "🇧🇪",
-    克罗地亚: "🇭🇷", 摩洛哥: "🇲🇦", 日本: "🇯🇵",
-    韩国: "🇰🇷", 澳大利亚: "🇦🇺", 沙特阿拉伯: "🇸🇦",
-    卡塔尔: "🇶🇦", 厄瓜多尔: "🇪🇨", 乌拉圭: "🇺🇾",
-    加拿大: "🇨🇦", 美国: "🇺🇸", 墨西哥: "🇲🇽",
-    加纳: "🇬🇭", 塞内加尔: "🇸🇳", 喀麦隆: "🇨🇲",
-    南非: "🇿🇦", 突尼斯: "🇹🇳", 塞尔维亚: "🇷🇸",
-    瑞士: "🇨🇭", 丹麦: "🇩🇰", 威尔士: "🏴󠁧󠁢󠁷󠁬󠁳󠁿",
-    波兰: "🇵🇱", 意大利: "🇮🇹", 哥伦比亚: "🇨🇴",
-    智利: "🇨🇱", 秘鲁: "🇵🇪", 瑞典: "🇸🇪",
-  };
-  return flags[team] || "🏳️";
 }

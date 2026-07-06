@@ -27,19 +27,21 @@ export default function ChatPanel({ matchId }: Props) {
     setSending(true);
     setStreamingText("");
 
+    let assistantText = "";
     await chatWithAIStream(
       matchId,
       question,
       messages,
       // onToken: 逐 token 追加
       (token) => {
+        assistantText += token;
         setStreamingText((prev) => prev + token);
       },
       // onDone: 流结束，将完整文本加入消息列表
       () => {
         setMessages((prev) => [
           ...prev,
-          { role: "assistant", content: streamingTextRef.current },
+          { role: "assistant", content: assistantText || "这场比赛暂时没有更多可回答的信息。" },
         ]);
         setStreamingText("");
         setSending(false);
@@ -55,10 +57,6 @@ export default function ChatPanel({ matchId }: Props) {
       }
     );
   };
-
-  // 用 ref 追踪最新的 streamingText，避免闭包问题
-  const streamingTextRef = useRef("");
-  streamingTextRef.current = streamingText;
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {

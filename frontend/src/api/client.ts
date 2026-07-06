@@ -1,9 +1,15 @@
 import axios from "axios";
 
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "/api/v1").replace(/\/$/, "");
+
 const api = axios.create({
-  baseURL: "/api/v1",
+  baseURL: API_BASE_URL,
   timeout: 30000,
 });
+
+function apiUrl(path: string) {
+  return `${API_BASE_URL}${path.startsWith("/") ? path : `/${path}`}`;
+}
 
 export interface MatchSummary {
   id: string;
@@ -83,6 +89,55 @@ export async function fetchNarrative(
   return data;
 }
 
+// ===== 冠军预测 =====
+
+export interface PredictionTeam {
+  team: string;
+  confederation: string;
+  qualified: boolean;
+  team_score: number;
+  score_index: number;
+  title_probability: number;
+  final_probability: number;
+  semi_final_probability: number;
+  quarter_final_probability: number;
+  round_of_16_probability: number;
+  round_of_32_probability: number;
+  drivers: {
+    elo: number;
+    squad: number;
+    recent_form: number;
+    availability: number;
+    tournament_experience: number;
+    defense: number;
+    coach_stability: number;
+  };
+}
+
+export interface ChampionPredictionResponse {
+  model_version: string;
+  as_of: string;
+  iterations: number;
+  format: string;
+  data_note: string;
+  weights: Record<string, number>;
+  field_strength: {
+    average_score: number;
+    top_score: number;
+    score_spread: number;
+  };
+  teams: PredictionTeam[];
+}
+
+export async function fetchChampionPrediction(
+  iterations = 10000
+): Promise<ChampionPredictionResponse> {
+  const { data } = await api.get("/predictions/champion", {
+    params: { iterations },
+  });
+  return data;
+}
+
 // ===== 追问对话（SSE 流式） =====
 
 export interface ChatMessage {
@@ -103,7 +158,7 @@ export async function chatWithAIStream(
   onError: (error: string) => void
 ): Promise<void> {
   try {
-    const response = await fetch(`/api/v1/matches/${matchId}/chat`, {
+    const response = await fetch(apiUrl(`/matches/${matchId}/chat`), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ question, history }),
@@ -116,7 +171,9 @@ export async function chatWithAIStream(
 
     const reader = response.body?.getReader();
     if (!reader) {
-      onError("无法读取响应流");
+      const answer = await chatWithAI(matchId, question, history);
+      onToken(answer);
+      onDone();
       return;
     }
 
@@ -153,6 +210,24 @@ export async function chatWithAIStream(
 
     onDone();
   } catch (e) {
-    onError(e instanceof Error ? e.message : "网络错误");
+    try {
+      const answer = await chatWithAI(matchId, question, history);
+      onToken(answer);
+      onDone();
+    } catch (fallbackError) {
+      onError(fallbackError instanceof Error ? fallbackError.message : e instanceof Error ? e.message : "网络错误");
+    }
   }
+}
+
+export async function chatWithAI(
+  matchId: string,
+  question: string,
+  history: ChatMessage[]
+): Promise<string> {
+  const { data } = await api.post(`/matches/${matchId}/chat/plain`, {
+    question,
+    history,
+  });
+  return data.answer;
 }

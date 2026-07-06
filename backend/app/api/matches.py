@@ -1,19 +1,24 @@
 """
 比赛和叙事 API 路由
 """
+from datetime import date as date_cls, datetime, timedelta
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session, selectinload
 from app.core.database import get_db
 from app.models.match import Match, Narrative
 from app.services.hooks import generate_hook
+from app.services.fallback_narrative import STYLE_NAMES, build_fallback_narrative
 from app.i18n import get_team_cn, get_stadium_cn, get_city_cn, get_round_cn, get_status_cn
 
 router = APIRouter(prefix="/api/v1", tags=["matches"])
 
+COMPLETED_STATUSES = ("FT", "AET", "PEN")
+
 
 @router.get("/matches")
 async def list_matches(
-    date: str = Query(None, description="日期，格式 YYYY-MM-DD，不传则返回全部"),
+    date: str = Query(None, description="日期，格式 YYYY-MM-DD，不传则返回当天"),
+    include_unfinished: bool = Query(False, description="是否包含未开始/进行中的比赛"),
     db: Session = Depends(get_db),
 ):
     """获取比赛列表，每场带比分和一句话钩子"""
@@ -23,8 +28,23 @@ async def list_matches(
         selectinload(Match.narratives),
     )
 
-    if date:
-        query = query.filter(Match.match_date.like(f"{date}%"))
+    # 当前产品只展示 2026 世界杯数据，历史测试数据保留在库中但不出现在列表。
+    query = query.filter(
+        Match.match_date >= datetime(2026, 1, 1),
+        Match.match_date < datetime(2027, 1, 1),
+    )
+
+    target_date = date or date_cls.today().isoformat()
+    try:
+        start = datetime.strptime(target_date, "%Y-%m-%d")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="日期格式应为 YYYY-MM-DD") from exc
+
+    end = start + timedelta(days=1)
+    query = query.filter(Match.match_date >= start, Match.match_date < end)
+
+    if not include_unfinished:
+        query = query.filter(Match.status.in_(COMPLETED_STATUSES))
 
     matches = query.order_by(Match.match_date.desc()).all()
 
@@ -46,7 +66,12 @@ async def list_matches(
             "available_styles": list(set(n.style for n in match.narratives)),
         })
 
-    return {"matches": result, "count": len(result)}
+    return {
+        "matches": result,
+        "count": len(result),
+        "date": target_date,
+        "include_unfinished": include_unfinished,
+    }
 
 
 @router.get("/matches/{match_id}")
@@ -139,28 +164,25 @@ async def get_narrative(
         Narrative.style == style,
     ).order_by(Narrative.card_index).all()
 
-    if not narratives:
-        raise HTTPException(status_code=404, detail="该比赛的此风格叙事尚未生成")
-
-    cards = []
-    for n in narratives:
-        cards.append({
-            "card_index": n.card_index,
-            "card_type": n.card_type,
-            "title": n.title,
-            "content": n.content,
-        })
-
-    style_names = {
-        "formal": "正经复盘",
-        "funny": "段子手",
-        "tactical": "战术党",
-    }
+    if narratives:
+        cards = []
+        for n in narratives:
+            cards.append({
+                "card_index": n.card_index,
+                "card_type": n.card_type,
+                "title": n.title,
+                "content": n.content,
+            })
+    else:
+        cards = [
+            {"card_index": i + 1, **card}
+            for i, card in enumerate(build_fallback_narrative(match, style))
+        ]
 
     return {
         "match_id": match_id,
         "style": style,
-        "style_name": style_names.get(style, style),
+        "style_name": STYLE_NAMES.get(style, style),
         "cards": cards,
         "card_count": len(cards),
     }

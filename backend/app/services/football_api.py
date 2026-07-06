@@ -51,6 +51,19 @@ class FootballAPI:
         data = await self._request("/fixtures", {"date": date_str})
         return data.get("response", [])
 
+    async def get_worldcup_fixtures_by_date(self, date_str: str, season: int | None = None) -> list[dict]:
+        """按日期获取世界杯比赛，date_str 格式: YYYY-MM-DD"""
+        if season is not None:
+            data = await self._request("/fixtures", {
+                "league": 1,
+                "season": season,
+                "date": date_str,
+            })
+            return data.get("response", [])
+
+        fixtures = await self.get_fixtures_by_date(date_str)
+        return [f for f in fixtures if f.get("league", {}).get("id") == 1]
+
     async def get_fixture_events(self, fixture_id: int) -> list[dict]:
         """获取单场比赛的事件流（进球/红黄牌/换人等）"""
         data = await self._request("/fixtures/events", {"fixture": fixture_id})

@@ -4,6 +4,262 @@
 
 ---
 
+## 2026-07-06 追加更新：生产部署配置与单服务上线准备
+
+### 改动摘要
+
+补齐项目上线所需的容器化部署配置，采用「前端构建 + FastAPI 托管静态文件与 API」的单服务形态。该方案适合 Render、Docker 主机或其他支持容器的云平台，能避免前后端分离时的跨域与多服务运维复杂度。
+
+### 修改文件
+
+| 文件 | 改动 |
+|------|------|
+| `Dockerfile` | 新增多阶段构建：Node 构建 `frontend/dist`，Python 运行 FastAPI 并托管前端静态文件 |
+| `.dockerignore` | 排除本地虚拟环境、node_modules、临时报告和敏感 `.env` 文件 |
+| `deploy/docker-entrypoint.sh` | 容器启动时初始化 `/app/backend/data`，缺失时复制镜像内置种子数据，再启动 Uvicorn |
+| `render.yaml` | 新增 Render Blueprint：Docker Web Service、健康检查、持久化数据盘和生产环境变量占位 |
+| `DEPLOY_H5.md` | 更新为推荐 Docker 单服务部署，补充 Render 部署步骤、生产环境变量和上线检查 |
+
+### 验证结果
+
+| 检查项 | 结果 |
+|--------|------|
+| `npm run build` | 通过，前端产物可被后端静态托管 |
+| 部署配置检查 | 已确认本机暂无 `vercel/netlify/fly/railway/render/docker` CLI，真实云端发布需接入目标平台账号或服务器 |
+
+### 剩余上线条件
+
+| 条件 | 说明 |
+|------|------|
+| 代码托管 | 需要推送到 GitHub/GitLab 或上传到服务器 |
+| 云平台/服务器 | 需要 Render、Docker 主机或其他容器平台访问权限 |
+| 生产密钥 | 需要配置 `API_FOOTBALL_KEY`、`OPENAI_API_KEY`、`OPENAI_BASE_URL`、模型名等 |
+| 正式域名 | 绑定域名后需更新 `CORS_ORIGINS` |
+
+## v1.4 — 冠军预测模型与实时数据快照（2026-06-18）
+
+### 改动摘要
+
+新增 2026 世界杯冠军预测模块，从「静态种子数据」升级为「联网同步快照 + 球队综合评分 + 真实小组赛模拟 + 淘汰赛蒙特卡洛模拟」。
+
+当前模型版本为 `lightweight-v3-squad-form-availability`，预测页地址为 `/predictions`，后端接口为 `GET /api/v1/predictions/champion`。
+
+### 2026-06-25 追加更新：H5 访问、战报数据修复与昨日回顾
+
+#### 改动摘要
+
+完成 H5 访问/分享基础能力、首页战报数据口径修复、昨日比赛自动补同步，以及前端 lint 清零。首页现在默认只展示当天已完赛比赛；如果昨天有已完赛比赛，会在「今日战报」下方显示「昨日回顾」。后端启动时会自动拉取昨天世界杯场次，降低本地数据库漏更新导致页面空栏目的风险。
+
+#### 用户可见变化
+
+| 场景 | 变化 |
+|------|------|
+| 首页今日战报 | 不再混入 2026 全年比赛、未开赛比赛或进行中脏数据；默认只显示当天已完赛场次 |
+| 首页昨日回顾 | 昨天有已完赛比赛时自动出现「昨日回顾」栏目，复用比赛卡片进入详情 |
+| 比分准确性 | 回补 2026-06-18 的旧脏数据，修正乌兹别克斯坦 1-3 哥伦比亚等终场比分 |
+| H5 访问分享 | 前端支持生产 API 地址配置、分享元信息和分享封面，便于通过微信/公众号打开 |
+| 详情页体验 | 修复底部导航入口；叙事加载状态改为按比赛/风格归属，切换风格时不会被旧请求回写 |
+
+#### 修改文件
+
+| 文件 | 改动 |
+|------|------|
+| `backend/app/api/matches.py` | `/api/v1/matches` 默认按当天日期过滤，并只返回 `FT/AET/PEN` 已完赛比赛；新增 `include_unfinished` 参数用于调试或扩展场景 |
+| `backend/app/services/startup_match_sync.py` | 新增启动同步服务：按 `Asia/Shanghai` 计算昨天，调用 API-Football 拉取世界杯场次并 upsert 到本地库 |
+| `backend/app/core/config.py` | 新增 `APP_TIMEZONE`、`SYNC_YESTERDAY_ON_STARTUP`、`SYNC_STARTUP_WITH_DETAILS` 配置 |
+| `backend/.env.example` | 补充启动同步配置示例 |
+| `backend/app/main.py` | FastAPI 启动时初始化数据库后执行昨日比赛同步；同时增强静态资源挂载防护 |
+| `backend/app/i18n.py` | 补充韩国别名、库拉索、科特迪瓦、海地、苏格兰等队名映射 |
+| `backend/data/worldcup.db` | 已回补 2026-06-18 终场比分，并实际同步 2026-06-24 的 5 场比赛 |
+| `frontend/src/pages/HomePage.tsx` | 首页拆分「今日战报」与「昨日回顾」，昨日有比赛时自动展示第二栏目 |
+| `frontend/src/pages/NarrativePage.tsx` | 修复 `react-hooks/set-state-in-effect`：用比赛/风格 key 归属请求结果，并派生 loading 状态 |
+| `frontend/src/components/MatchCard.tsx` | 继续使用语义化 `Link` 卡片，并补充南非、库拉索、科特迪瓦、海地、苏格兰等旗帜 |
+| `frontend/src/api/client.ts` | 支持生产 `VITE_API_BASE_URL`，保留冠军预测和聊天接口类型 |
+| `frontend/index.html`、`frontend/public/share-cover.svg` | 补充 H5 分享标题、描述、封面和主题色 |
+| `frontend/src/App.tsx`、`frontend/src/pages/ProfilePage.tsx`、`frontend/src/pages/NotFoundPage.tsx` | 补齐「我的」页面和 404 页面，避免底部导航/未知路由断路 |
+| `DEPLOY_H5.md` | 新增 H5 部署规划与检查清单 |
+
+#### 数据修复记录
+
+| 日期 | 修复/同步结果 |
+|------|---------------|
+| 2026-06-18 | 回补加拿大 6-0 卡塔尔、瑞士 4-1 波黑、捷克 1-1 南非、乌兹别克斯坦 1-3 哥伦比亚 |
+| 2026-06-24 | 启动同步同款逻辑实际拉取并入库 5 场：苏格兰 0-3 巴西、摩洛哥 4-2 海地、波黑 3-1 卡塔尔、瑞士 2-1 加拿大、哥伦比亚 1-0 刚果（金） |
+| 2026-06-25 | 默认 `/api/v1/matches` 只返回当天 2 场已完赛：捷克 0-3 墨西哥、南非 1-0 韩国 |
+
+#### 验证结果
+
+| 检查项 | 结果 |
+|--------|------|
+| `GET /api/v1/matches` | 通过；默认返回 `date=2026-06-25`、`include_unfinished=false`、共 2 场已完赛 |
+| `GET /api/v1/matches?date=2026-06-24` | 通过；返回 5 场昨日已完赛比赛，队名已中文化 |
+| `GET /api/v1/matches?date=2026-06-25&include_unfinished=true` | 通过；可返回当天已完赛 + 未开始比赛，用于调试 |
+| `sync_worldcup_matches_for_date(2026-06-24)` | 通过；实际访问 API-Football 并写入 5 场 |
+| `python -m compileall backend/app backend/scripts` | 通过 |
+| `npm run build` | 通过 |
+| `npm run lint` | 通过；已修复 `frontend/src/pages/NarrativePage.tsx:24` 的 hooks 规则问题 |
+
+#### 新增待解决问题
+
+| 问题 | 当前状态 | 下一步建议 |
+|------|----------|------------|
+| 启动同步只补昨天 | 当前只解决「昨天漏同步」这一条产品路径 | 增加最近 2-3 天补偿同步，避免 API 临时失败后留下空窗 |
+| API-Football 免费计划窗口 | 免费计划不能回刷部分历史日期，旧比赛仍可能需要快照或手工回补 | 建立 `prediction_snapshot.json` 到比赛库的自动 reconciliation 脚本 |
+| 首页日期来源 | 前端用浏览器日期计算昨日，后端默认用服务端日期 | 长期应统一暴露 `/matches/daily-summary`，由后端返回今日/昨日分组和数据时间 |
+
+### 2026-06-23 追加更新：10000 次模拟与法国队热门对比
+
+#### 改动摘要
+
+将冠军预测的默认蒙特卡洛模拟次数从 `6000` 提升到 `10000`，并基于当前快照重新跑出 Top 10 冠军概率。随后对法国队与阿根廷、西班牙、英格兰、德国、巴西等争冠热门做了单项因子拆解，用于解释法国队当前评分位置。
+
+#### 修改文件
+
+| 文件 | 改动 |
+|------|------|
+| `backend/app/services/prediction_model.py` | `build_prediction()` 默认模拟次数调整为 `10000` |
+| `backend/app/api/predictions.py` | `/api/v1/predictions/champion` 的 `iterations` 默认查询参数调整为 `10000` |
+| `frontend/src/api/client.ts` | `fetchChampionPrediction()` 默认请求模拟次数调整为 `10000` |
+
+#### 10000 次模拟结果
+
+当前快照时间为 `2026-06-23T08:29:08.900958+00:00`，随机种子为 `2026`。
+
+| 排名 | 球队 | 冠军概率 | 进决赛 | 进四强 | 进八强 | 综合分 |
+|------|------|----------|--------|--------|--------|--------|
+| 1 | 阿根廷 | 38.71% | 53.32% | 72.38% | 89.53% | 92.52 |
+| 2 | 法国 | 18.42% | 32.44% | 56.93% | 80.58% | 87.50 |
+| 3 | 西班牙 | 17.96% | 32.93% | 52.22% | 79.96% | 87.88 |
+| 4 | 英格兰 | 12.43% | 28.43% | 51.08% | 75.23% | 84.35 |
+| 5 | 德国 | 4.39% | 15.77% | 36.88% | 73.53% | 77.43 |
+| 6 | 哥伦比亚 | 2.50% | 9.67% | 25.55% | 53.76% | 77.23 |
+| 7 | 巴西 | 1.60% | 6.18% | 17.37% | 44.76% | 75.36 |
+| 8 | 荷兰 | 1.49% | 6.22% | 18.76% | 46.36% | 75.37 |
+| 9 | 墨西哥 | 0.67% | 3.77% | 15.38% | 46.68% | 70.64 |
+| 10 | 日本 | 0.67% | 3.10% | 11.53% | 32.19% | 71.28 |
+
+#### 法国队评分拆解
+
+| 因素 | 法国分数 | 权重 | 加权贡献 |
+|------|----------|------|----------|
+| Elo 实力 | 88.0 | 35% | 30.80 |
+| 阵容质量 | 93 | 20% | 18.60 |
+| 近期状态 | 80 | 20% | 16.00 |
+| 大赛经验 | 92 | 10% | 9.20 |
+| 防守能力 | 88 | 10% | 8.80 |
+| 教练稳定性 | 82 | 5% | 4.10 |
+| 伤病可用性 | 100 | 额外调整 | 0.00 |
+| **综合分** |  |  | **87.50** |
+
+#### 主要结论
+
+| 对比 | 模型解释 |
+|------|----------|
+| 法国 vs 阿根廷 | 法国在防守和近期状态上不弱，但阿根廷 Elo、阵容质量和大赛经验更高；Elo 权重为 35%，导致阿根廷基础盘明显领先 |
+| 法国 vs 西班牙 | 西班牙靠 Elo 和阵容质量领先，法国靠近期状态和大赛经验追回差距；两队综合分非常接近 |
+| 法国 vs 英格兰 | 英格兰近期状态略好，但法国在 Elo、大赛经验、防守和教练稳定性上更均衡，因此冠军概率明显高于英格兰 |
+| 法国潜力 | 当前模型认可法国是第二热门，但可能低估其淘汰赛中的阵容深度、冲击力、比赛管理和替补厚度 |
+
+#### 验证结果
+
+| 检查项 | 结果 |
+|--------|------|
+| `build_prediction(iterations=10000, seed=2026)` | 通过；返回 `iterations=10000` 和 Top 10 概率 |
+| `GET /api/v1/predictions/champion` | 通过；默认返回 `iterations=10000` |
+| `npm run build` | 通过 |
+
+#### 新增模型待解决问题
+
+| 问题 | 当前状态 | 下一步建议 |
+|------|----------|------------|
+| 法国队淘汰赛优势 | 当前仍以线性综合分为主，没有单独建模淘汰赛经验、阵容深度和比赛管理能力 | 增加 `knockout_resilience_score`、`squad_depth_score`、`transition_attack_score` 等因子 |
+| 热门队路径优势 | 当前冠军概率不仅受综合分影响，也受简化 bracket 路径影响 | 接入 2026 官方 32 强落位规则，区分实力优势和赛程路径优势 |
+| Elo 权重偏强 | Elo 对阿根廷、西班牙等队的基础盘影响较大，可能压制近期状态和阵容深度判断 | 用历史世界杯回测校准 Elo、近期状态、大赛经验的权重 |
+
+### 修改文件
+
+| 文件 | 改动 |
+|------|------|
+| `backend/app/services/prediction_model.py` | 新增冠军预测核心模型：球队综合评分、单场胜率、真实小组赛处理、32 强/淘汰赛模拟、冠军概率统计；优先读取 `prediction_snapshot.json`，缺失时回退内置种子数据 |
+| `backend/app/api/predictions.py` | 新增预测 API：`/api/v1/predictions/champion?iterations=10000&seed=2026` |
+| `backend/app/main.py` | 注册 `predictions_router` |
+| `backend/scripts/sync_prediction_data.py` | 新增联网同步脚本，抓取 Elo、FIFA 排名页元数据、真实分组、小组赛赛程/比分、最终名单，并生成本地快照 |
+| `backend/data/prediction_snapshot.json` | 新增预测输入快照：48 队、12 个真实小组、72 条小组赛 fixture/score、48 份最终名单 |
+| `frontend/src/api/client.ts` | 新增冠军预测 API 类型与 `fetchChampionPrediction()` |
+| `frontend/src/pages/PredictionPage.tsx` | 新增冠军预测页：Top 10 概率、晋级路径、模型因子展示、数据说明 |
+| `frontend/src/App.tsx` | 新增 `/predictions` 路由 |
+| `frontend/src/pages/HomePage.tsx` | 底部导航增加「预测」入口 |
+| `frontend/src/index.css` | 新增预测页样式：概率条、模型因子条、晋级路径网格、Top 榜单 |
+
+### 当前数据源
+
+| 数据 | 来源 | 当前状态 |
+|------|------|----------|
+| 实时 Elo | `https://www.eloratings.net/World.tsv` | 已接入 |
+| FIFA 排名页元数据 | `https://inside.fifa.com/fifa-world-ranking/men` | 已接入；完整积分表 API 暂未稳定解析 |
+| 真实分组 | Wikipedia 2026 World Cup group pages | 已接入，并有当前分组兜底表 |
+| 小组赛赛程/比分 | Wikipedia 2026 World Cup group pages | 已接入；已赛比分直接计入积分，未赛比赛由模型模拟 |
+| 最终名单 | Wikipedia 2026 World Cup squads | 已接入，当前解析到 48 队最终名单 |
+| 伤病/停赛 | 可选 `--injuries path/to/file.json` | 已预留接口，尚未接入稳定自动源 |
+
+### 当前模型计算逻辑
+
+综合实力评分：
+
+```text
+TeamScore =
+  0.35 * EloScore
++ 0.20 * SquadScore
++ 0.20 * RecentFormScore
++ 0.10 * TournamentExperienceScore
++ 0.10 * DefenseScore
++ 0.05 * CoachStabilityScore
+```
+
+模拟流程：
+
+1. 读取 `prediction_snapshot.json` 中的 48 队、真实小组、赛程和名单。
+2. 将原始 Elo 映射为 0-100 的 `EloScore`。
+3. 综合阵容、近期状态、大赛经验、防守、教练稳定性生成 `TeamScore`。
+4. 小组赛中已有真实比分的比赛直接计入积分/净胜球/进球；未赛比赛按模型概率模拟。
+5. 每组前 2 名 + 8 个成绩最好的小组第三进入 32 强。
+6. 淘汰赛按单场胜率函数模拟，重复 `iterations` 次。
+7. 统计各队进入 32 强、16 强、8 强、4 强、决赛、夺冠的概率。
+
+### 验证结果
+
+| 检查项 | 结果 |
+|--------|------|
+| `backend/scripts/sync_prediction_data.py` | 通过；生成 48 队、72 条 fixture、48 份最终名单 |
+| `python -m compileall backend/app backend/scripts/sync_prediction_data.py` | 通过 |
+| `GET /api/v1/predictions/champion?iterations=1000` | 通过；返回 `lightweight-v3-squad-form-availability` |
+| `npm run build` | 通过 |
+| `npm run lint` | 当时未通过；卡在既有 `frontend/src/pages/NarrativePage.tsx:24` 的 `react-hooks/set-state-in-effect` 规则，已在 2026-06-25 追加更新中修复 |
+
+### 模型待解决问题
+
+| 问题 | 当前状态 | 下一步建议 |
+|------|----------|------------|
+| FIFA 完整积分 | 官方页面可解析元数据，但稳定完整积分表 API 暂未找到 | 继续定位 FIFA 前端动态接口；若不可用，考虑接入可信第三方镜像或手动快照 |
+| 阵容质量 | 当前主要使用内置评分 + 名单人数/不可用人数修正，尚未真正球员级建模 | 接入球员身价、俱乐部等级、近季出场时间、国家队首发概率 |
+| 近期状态 | 当前仍偏静态，没有完整使用近 10-20 场赛果 | 接入近期比赛结果、对手 Elo、净胜球、进失球、Elo 变化 |
+| 防守稳定性 | 当前仍是内置/派生评分 | 接入场均失球、零封率、被射门、xGA 等指标 |
+| 伤病/停赛 | 只预留了 `--injuries` JSON 输入 | 寻找稳定伤病数据源，或建立人工维护的伤停快照 |
+| 淘汰赛 bracket | 当前 32 强配对仍是简化模型，不是完整 FIFA 官方路径 | 接入 2026 官方 32 强对阵映射和第三名落位规则 |
+| 概率校准 | 尚未用历史世界杯回测校准权重 | 用 2014/2018/2022 世界杯回测 Brier Score、Log Loss、Top-K 命中率 |
+| 主场/旅途/气候 | 暂未显式建模 | 对加拿大/美国/墨西哥主办优势、旅行距离、气候适应增加修正项 |
+| 小样本爆冷 | 当前 sigmoid 单场模型较简单 | 引入 draw/加时/点球分层模型，增强淘汰赛不确定性表达 |
+
+### 关键技术决策
+
+**快照优先而非请求时联网**：预测接口读取本地 `prediction_snapshot.json`，避免每次打开页面都依赖外网，保证页面响应稳定。数据更新由 `sync_prediction_data.py` 显式触发。
+
+**真实结果优先**：如果小组赛已有比分，模型不再重新模拟该场，而是直接计入真实积分；只有未赛比赛才按概率模拟。
+
+**模型保持轻量可解释**：当前仍采用可解释加权评分 + Monte Carlo，而不是直接上复杂黑盒模型，方便后续逐项替换特征和回测权重。
+
+---
+
 ## v1.3 — 首页卡片精简（2026-05-27）
 
 ### 改动摘要

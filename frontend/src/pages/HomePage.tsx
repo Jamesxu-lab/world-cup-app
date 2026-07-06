@@ -1,16 +1,24 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { fetchMatches } from "../api/client";
 import type { MatchSummary } from "../api/client";
 import MatchCard from "../components/MatchCard";
 
 export default function HomePage() {
-  const [matches, setMatches] = useState<MatchSummary[]>([]);
+  const [todayMatches, setTodayMatches] = useState<MatchSummary[]>([]);
+  const [yesterdayMatches, setYesterdayMatches] = useState<MatchSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    fetchMatches()
-      .then(setMatches)
+    Promise.all([
+      fetchMatches(),
+      fetchMatches(getRelativeDate(-1)),
+    ])
+      .then(([today, yesterday]) => {
+        setTodayMatches(today);
+        setYesterdayMatches(yesterday);
+      })
       .catch((e) => setError(e.message || "加载失败"))
       .finally(() => setLoading(false));
   }, []);
@@ -52,11 +60,14 @@ export default function HomePage() {
     );
   }
 
+  const hasTodayMatches = todayMatches.length > 0;
+  const hasYesterdayMatches = yesterdayMatches.length > 0;
+
   return (
     <div style={{ paddingBottom: 80 }}>
       <AppHeader />
 
-      {matches.length === 0 ? (
+      {!hasTodayMatches && !hasYesterdayMatches ? (
         <div className="empty-state">
           <div className="icon">⚽</div>
           <h3>暂无比赛</h3>
@@ -64,18 +75,42 @@ export default function HomePage() {
         </div>
       ) : (
         <>
-          <div className="section-title">📅 今日战报</div>
-          <div className="match-list">
-            {matches.map((m) => (
-              <MatchCard key={m.id} match={m} />
-            ))}
-          </div>
+          {hasTodayMatches && (
+            <>
+              <div className="section-title">📅 今日战报</div>
+              <div className="match-list">
+                {todayMatches.map((m) => (
+                  <MatchCard key={m.id} match={m} />
+                ))}
+              </div>
+            </>
+          )}
+
+          {hasYesterdayMatches && (
+            <>
+              <div className="section-title">📆 昨日回顾</div>
+              <div className="match-list">
+                {yesterdayMatches.map((m) => (
+                  <MatchCard key={m.id} match={m} />
+                ))}
+              </div>
+            </>
+          )}
         </>
       )}
 
       <BottomNav active="home" />
     </div>
   );
+}
+
+function getRelativeDate(offsetDays: number): string {
+  const date = new Date();
+  date.setDate(date.getDate() + offsetDays);
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function AppHeader() {
@@ -94,16 +129,15 @@ function AppHeader() {
 }
 
 function BottomNav({ active }: { active: string }) {
+  const navigate = useNavigate();
+
   return (
     <nav className="bottom-nav">
-      <button className={`bottom-nav-item ${active === "home" ? "active" : ""}`}>
+      <button className={`bottom-nav-item ${active === "home" ? "active" : ""}`} onClick={() => navigate("/")}>
         <span className="nav-icon">🏠</span>首页
       </button>
-      <button className={`bottom-nav-item ${active === "events" ? "active" : ""}`}>
-        <span className="nav-icon">🏆</span>赛事
-      </button>
-      <button className={`bottom-nav-item ${active === "me" ? "active" : ""}`}>
-        <span className="nav-icon">👤</span>我的
+      <button className={`bottom-nav-item ${active === "predictions" ? "active" : ""}`} onClick={() => navigate("/predictions")}>
+        <span className="nav-icon">🏆</span>预测
       </button>
     </nav>
   );

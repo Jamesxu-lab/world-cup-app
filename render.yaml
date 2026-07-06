@@ -1,0 +1,41 @@
+services:
+  - type: web
+    name: worldcup-app
+    env: docker
+    plan: starter
+    healthCheckPath: /health
+    disk:
+      name: worldcup-data
+      mountPath: /app/backend/data
+      sizeGB: 1
+    envVars:
+      - key: APP_TIMEZONE
+        value: Asia/Shanghai
+      - key: DATABASE_URL
+        value: sqlite:///./data/worldcup.db
+      - key: CORS_ORIGINS
+        sync: false
+      - key: API_FOOTBALL_KEY
+        sync: false
+      - key: API_FOOTBALL_BASE_URL
+        value: https://v3.football.api-sports.io
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_BASE_URL
+        sync: false
+      - key: LLM_MODEL
+        sync: false
+      - key: CHAT_MODEL
+        sync: false
+      - key: SYNC_YESTERDAY_ON_STARTUP
+        value: "true"
+      - key: SYNC_STARTUP_WITH_DETAILS
+        value: "true"
+      - key: PREDICTION_SYNC_ON_STARTUP
+        value: "true"
+      - key: PREDICTION_SYNC_BLOCK_STARTUP
+        value: "false"
+      - key: PREDICTION_SYNC_MAX_AGE_HOURS
+        value: "24"
+      - key: PREDICTION_SYNC_DAILY_ENABLED
+        value: "false"
