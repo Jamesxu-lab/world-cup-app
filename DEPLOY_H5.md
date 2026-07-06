@@ -13,7 +13,7 @@ H5 前端：https://yourdomain.com
         ↓
 同源 API：https://yourdomain.com/api/v1
         ↓
-数据库 / 预测快照 / AI 服务
+临时 SQLite / 镜像内置预测快照 / AI 服务
 ```
 
 ## 生产环境变量
@@ -85,14 +85,34 @@ http://localhost:8000/api/v1/predictions/champion
 容器启动时会执行 `deploy/docker-entrypoint.sh`：
 
 1. 确保 `/app/backend/data` 存在。
-2. 如果持久化目录为空，将镜像内置的 `worldcup.db`、`prediction_snapshot.json`、`champion_prediction_cache.json` 复制为种子数据。
+2. 如果数据目录为空，将镜像内置的 `prediction_snapshot.json`、`champion_prediction_cache.json` 复制为种子数据。
 3. 通过 `uvicorn` 启动 FastAPI，并使用云平台注入的 `PORT`。
 
-生产环境建议挂载持久化目录到：
+### 无持久化数据盘方案
 
-```text
-/app/backend/data
-```
+Render 免费/无信用卡场景可以不购买持久化数据盘。当前 `render.yaml` 默认采用无盘部署，运行数据写入容器内的 `/app/backend/data` 临时目录。
+
+| 数据 | 无盘表现 |
+|------|----------|
+| `prediction_snapshot.json` | 镜像内置，容器启动可直接使用 |
+| `champion_prediction_cache.json` | 镜像内置，缺失时也可重新计算 |
+| `worldcup.db` | 容器启动时由 `init_db()` 创建空库 |
+| 昨日比赛 | 启动时通过 API-Football 重新同步 |
+| AI 战报/聊天上下文 | 只保存在当前容器生命周期内，重启后丢失 |
+
+无盘方案的适用范围：
+
+- 低成本验证产品和 H5 页面。
+- 冠军预测页优先可用。
+- 首页/昨日回顾依赖 `API_FOOTBALL_KEY` 启动同步。
+
+无盘方案的限制：
+
+- Render 重启、重新部署、休眠恢复后，SQLite 内写入的比赛明细和战报会重置。
+- 如果 API-Football 当次同步失败，首页可能短时没有最新比赛。
+- 不适合作为长期生产数据存储。
+
+后续如果需要稳定保存比赛库、战报和聊天记录，再开启 Render Disk 或切换 PostgreSQL。
 
 ## Render 部署
 
@@ -119,9 +139,19 @@ https://yourdomain.com,https://www.yourdomain.com
 | 配置 | 说明 |
 |------|------|
 | `env: docker` | 使用项目根目录 `Dockerfile` 构建 |
+| `plan: free` | 使用免费实例，避免信用卡/付费实例要求 |
 | `healthCheckPath: /health` | Render 健康检查 |
-| `disk.mountPath: /app/backend/data` | 持久化 SQLite、预测快照和缓存 |
+| 无 `disk` 配置 | 不购买持久化数据盘，适配无信用卡/免费验证场景 |
 | `SYNC_STARTUP_WITH_DETAILS=true` | 启动同步昨日比赛详情 |
+
+如果后续要启用持久化数据盘，可在 `render.yaml` 的服务下恢复：
+
+```yaml
+disk:
+  name: worldcup-data
+  mountPath: /app/backend/data
+  sizeGB: 1
+```
 
 ## 备选：传统前后端分离部署
 
