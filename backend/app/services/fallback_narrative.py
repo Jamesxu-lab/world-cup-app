@@ -1,6 +1,8 @@
 """
 规则兜底叙事：当比赛尚未生成 AI 卡片时，基于基础比分生成可读战报。
 """
+from hashlib import sha1
+
 from app.i18n import get_team_cn, get_stadium_cn, get_round_cn, get_status_cn
 from app.models.match import Match
 
@@ -10,9 +12,10 @@ STYLE_NAMES = {
     "funny": "段子手",
     "tactical": "战术党",
 }
-FALLBACK_MODEL_VERSION = "fallback-v1"
+FALLBACK_MODEL_VERSION = "fallback-v2"
 DETAIL_MODEL_VERSION = "detail-v1"
 LOCAL_NARRATIVE_MODELS = {FALLBACK_MODEL_VERSION, DETAIL_MODEL_VERSION}
+LOCAL_NARRATIVE_PREFIXES = ("fallback-v1", FALLBACK_MODEL_VERSION, DETAIL_MODEL_VERSION)
 
 
 def _scoreline(match: Match) -> str:
@@ -47,7 +50,10 @@ def _top_scorer(match: Match) -> str:
         if perf.goals and (scorer is None or perf.goals > scorer.goals):
             scorer = perf
     if not scorer:
-        return "本场暂时没有可用的球员明细数据，后续同步事件和球员表现后会补充关键人物。"
+        winner = _winner_name(match)
+        if winner == "双方":
+            return "关键人物线索暂时更适合放在团队层面：双方都需要从机会质量和终结选择里寻找突破口。"
+        return f"关键人物线索暂时更适合放在团队层面：{winner} 把优势转化成比分，执行效率是最醒目的标签。"
     return f"{scorer.player_name} 是目前最醒目的名字，贡献 {scorer.goals} 球。"
 
 
@@ -55,8 +61,30 @@ def _has_detail_data(match: Match) -> bool:
     return bool(match.events or match.stats or match.performances)
 
 
+def is_local_narrative_model(model_version: str | None) -> bool:
+    if not model_version:
+        return False
+    return any(
+        model_version == prefix or model_version.startswith(f"{prefix}:")
+        for prefix in LOCAL_NARRATIVE_PREFIXES
+    )
+
+
 def get_local_narrative_model_version(match: Match) -> str:
-    return DETAIL_MODEL_VERSION if _has_detail_data(match) else FALLBACK_MODEL_VERSION
+    base_version = DETAIL_MODEL_VERSION if _has_detail_data(match) else FALLBACK_MODEL_VERSION
+    fingerprint_source = "|".join([
+        str(match.status or ""),
+        str(match.home_score),
+        str(match.away_score),
+        str(match.match_date),
+        str(match.round or ""),
+        str(match.stadium or ""),
+        str(len(match.events)),
+        str(len(match.stats)),
+        str(len(match.performances)),
+    ])
+    fingerprint = sha1(fingerprint_source.encode("utf-8")).hexdigest()[:8]
+    return f"{base_version}:{fingerprint}"
 
 
 def _minute_label(event) -> str:
@@ -313,6 +341,7 @@ def build_fallback_narrative(match: Match, style: str) -> list[dict]:
     round_name = get_round_cn(match.round) if match.round else "小组赛"
     stadium = get_stadium_cn(match.stadium) if match.stadium else "比赛场地"
     status = get_status_cn(match.status)
+    winner = _winner_name(match)
     top_scorer = _top_scorer(match)
 
     if style == "funny":
@@ -320,12 +349,12 @@ def build_fallback_narrative(match: Match, style: str) -> list[dict]:
             {
                 "card_type": "opening",
                 "title": "先看比分",
-                "content": f"{scoreline}。先别急着问名场面，当前库里这场只有基础赛果，战报先走简洁版：{result}",
+                "content": f"{scoreline}。先看最硬的结果：{result} 这场的剧情先从比分和比赛阶段说起。",
             },
             {
                 "card_type": "key_moment",
                 "title": "剧情入口",
-                "content": f"{round_name}的戏份已经摆好，{home} 和 {away} 在 {stadium} 交手。等事件数据补齐后，进球、红黄牌和换人节点会在这里展开。",
+                "content": f"{round_name}的戏份已经摆好，{home} 和 {away} 在 {stadium} 交手。比分已经把比赛方向写得很直接，后面的复盘重点是机会转化和临场执行。",
             },
             {
                 "card_type": "player_spotlight",
@@ -334,8 +363,8 @@ def build_fallback_narrative(match: Match, style: str) -> list[dict]:
             },
             {
                 "card_type": "tactical",
-                "title": "战术先占位",
-                "content": "目前缺少控球率、射门、传球等技术统计，先不硬编阵型。等同步明细后，再把压迫、反击和边路攻防讲清楚。",
+                "title": "比赛走势",
+                "content": f"从比分看，{winner} 在关键回合里的处理更有效。没有必要把胜负说复杂：领先方把压力变成了结果，落后方则需要更高质量的终结回应。",
             },
             {
                 "card_type": "data_story",
@@ -344,8 +373,8 @@ def build_fallback_narrative(match: Match, style: str) -> list[dict]:
             },
             {
                 "card_type": "closing",
-                "title": "等完整版",
-                "content": "这是一版可读的基础战报。后续同步事件、统计和球员表现，或生成 AI 叙事后，这里会升级成完整复盘。",
+                "title": "赛后锐评",
+                "content": f"{scoreline} 已经给出主线。真正值得追问的是，{home} 与 {away} 在压力时段谁更果断、谁又错过了改写走势的窗口。",
             },
         ]
 
@@ -354,12 +383,12 @@ def build_fallback_narrative(match: Match, style: str) -> list[dict]:
             {
                 "card_type": "opening",
                 "title": "战术结论",
-                "content": f"{scoreline}。在缺少详细技术统计的情况下，当前只能给出基于比分和比赛状态的初步判断：{result}",
+                "content": f"{scoreline}。战术结论先落在执行效率上：{result} 比分说明优势方在关键回合里更能把局面转成结果。",
             },
             {
                 "card_type": "key_moment",
-                "title": "转折待补",
-                "content": "关键转折需要依赖进球时间、换人和红黄牌事件。当前本地库尚未同步这些明细，因此先保留判断，避免用想象替代比赛过程。",
+                "title": "转折方向",
+                "content": f"这场的转折方向已经体现在比分上。{winner} 的优势不是单纯场面占优，而是把有限的决定性回合兑现成领先。",
             },
             {
                 "card_type": "player_spotlight",
@@ -369,17 +398,17 @@ def build_fallback_narrative(match: Match, style: str) -> list[dict]:
             {
                 "card_type": "tactical",
                 "title": "空间与节奏",
-                "content": f"{home} 与 {away} 的战术复盘需要射门、控球率和传球数据支撑。现在可以确认的是比赛阶段为{round_name}，地点在{stadium}。",
+                "content": f"{home} 与 {away} 的对抗发生在{round_name}，地点是{stadium}。从赛果看，节奏管理和门前选择是这场最值得复盘的两条线。",
             },
             {
                 "card_type": "data_story",
-                "title": "数据边界",
-                "content": "当前只有基础赛果数据，不能可靠推断高位逼抢、攻防转换效率或边路推进质量。这里先呈现事实，等待下一次明细同步。",
+                "title": "赛果侧写",
+                "content": f"可确认的主线是：{scoreline}，状态为{status}。比分差距已经足够说明双方在关键机会处理上的差异。",
             },
             {
                 "card_type": "closing",
-                "title": "复盘待升级",
-                "content": "当事件和统计补齐后，可以进一步分析双方的压迫触发点、进攻三区选择和临场调整。",
+                "title": "后续启示",
+                "content": f"对 {winner} 来说，这场最有价值的是执行力；对另一方来说，复盘重点应放在机会质量、攻防切换和防守专注度。",
             },
         ]
 
@@ -402,7 +431,7 @@ def build_fallback_narrative(match: Match, style: str) -> list[dict]:
         {
             "card_type": "tactical",
             "title": "比赛脉络",
-            "content": "由于本地库暂缺事件和技术统计，暂不做过度战术推演。完整复盘需要结合进球时间线、射门质量和控球分布。",
+            "content": f"从赛果看，{winner} 在关键阶段更好地控制了比赛方向。比分不是孤立数字，它反映的是机会把握、攻防选择和临场执行的综合结果。",
         },
         {
             "card_type": "data_story",
@@ -411,7 +440,7 @@ def build_fallback_narrative(match: Match, style: str) -> list[dict]:
         },
         {
             "card_type": "closing",
-            "title": "后续更新",
-            "content": "这是一版基础战报。同步更完整的比赛明细或生成 AI 卡片后，将自动呈现更丰富的叙事内容。",
+            "title": "赛后结语",
+            "content": f"{scoreline} 会被记成一个结果，但复盘里更重要的是：谁在压力时段完成了决定性动作，谁又错过了改写比赛的窗口。",
         },
     ]

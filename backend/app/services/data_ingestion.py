@@ -6,11 +6,10 @@ from sqlalchemy.orm import Session
 from app.models.match import Match, MatchEvent, MatchStat, Narrative, PlayerPerformance
 from app.services.football_api import FootballAPI
 from app.services.fallback_narrative import (
-    FALLBACK_MODEL_VERSION,
-    LOCAL_NARRATIVE_MODELS,
     STYLE_NAMES,
     build_fallback_narrative,
     get_local_narrative_model_version,
+    is_local_narrative_model,
 )
 
 api = FootballAPI()
@@ -128,9 +127,8 @@ def ensure_fallback_narratives(db: Session, match: Match) -> int:
         ).all()
 
         if existing:
-            is_local_generated = all(n.model_version in LOCAL_NARRATIVE_MODELS for n in existing)
+            is_local_generated = all(is_local_narrative_model(n.model_version) for n in existing)
             should_refresh = is_local_generated and any(n.model_version != model_version for n in existing)
-            should_refresh = should_refresh or (is_local_generated and model_version != FALLBACK_MODEL_VERSION)
             if not is_local_generated or not should_refresh:
                 continue
             db.query(Narrative).filter(

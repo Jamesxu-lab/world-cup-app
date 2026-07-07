@@ -9,13 +9,24 @@ from app.core.config import get_settings
 from app.core.database import get_db
 from app.models.match import Match, Narrative
 from app.services.hooks import generate_hook
-from app.services.fallback_narrative import STYLE_NAMES, build_fallback_narrative
-from app.services.startup_match_sync import get_today_date, sync_product_date_if_stale
+from app.services.fallback_narrative import (
+    STYLE_NAMES,
+    build_fallback_narrative,
+    get_local_narrative_model_version,
+    is_local_narrative_model,
+)
+from app.services.startup_match_sync import (
+    get_today_date,
+    sync_match_details_if_stale,
+    sync_product_date_if_stale,
+    sync_recent_completed_product_dates,
+)
 from app.i18n import get_team_cn, get_stadium_cn, get_city_cn, get_round_cn, get_status_cn
 
 router = APIRouter(prefix="/api/v1", tags=["matches"])
 
 COMPLETED_STATUSES = ("FT", "AET", "PEN")
+DETAIL_SYNC_STATUSES = ("1H", "2H", "HT", "ET", "BT", "P", "SUSP", "INT", *COMPLETED_STATUSES)
 WORLD_CUP_2026_START = datetime(2026, 1, 1)
 WORLD_CUP_2026_END = datetime(2027, 1, 1)
 
@@ -67,6 +78,12 @@ async def list_match_history(
     db: Session = Depends(get_db),
 ):
     """获取今天之前的历史完赛列表。"""
+    settings = get_settings()
+    await sync_recent_completed_product_dates(
+        days=3,
+        with_details=settings.sync_startup_with_details,
+    )
+
     today_start, _ = get_product_day_utc_range(get_today_date())
     base_query = (
         build_match_query(db)
@@ -109,6 +126,14 @@ async def get_match(
 
     if not match:
         raise HTTPException(status_code=404, detail="比赛不存在")
+
+    if await _sync_missing_match_details(db, match):
+        match = db.query(Match).options(
+            selectinload(Match.events),
+            selectinload(Match.stats),
+            selectinload(Match.performances),
+            selectinload(Match.narratives),
+        ).filter(Match.id == match_id).first()
 
     # 事件（按时间排序）
     events = []
@@ -243,14 +268,46 @@ async def get_narrative(
     db: Session = Depends(get_db),
 ):
     """获取某场比赛某种风格的叙事卡片"""
-    match = db.query(Match).filter(Match.id == match_id).first()
+    match = db.query(Match).options(
+        selectinload(Match.events),
+        selectinload(Match.stats),
+        selectinload(Match.performances),
+    ).filter(Match.id == match_id).first()
     if not match:
         raise HTTPException(status_code=404, detail="比赛不存在")
+
+    if await _sync_missing_match_details(db, match):
+        match = db.query(Match).options(
+            selectinload(Match.events),
+            selectinload(Match.stats),
+            selectinload(Match.performances),
+        ).filter(Match.id == match_id).first()
 
     narratives = db.query(Narrative).filter(
         Narrative.match_id == match_id,
         Narrative.style == style,
     ).order_by(Narrative.card_index).all()
+
+    if _should_refresh_local_narratives(match, narratives):
+        db.query(Narrative).filter(
+            Narrative.match_id == match_id,
+            Narrative.style == style,
+        ).delete(synchronize_session=False)
+        for i, card in enumerate(build_fallback_narrative(match, style), start=1):
+            db.add(Narrative(
+                match_id=match_id,
+                style=style,
+                card_index=i,
+                card_type=card.get("card_type"),
+                title=card.get("title"),
+                content=card.get("content"),
+                model_version=get_local_narrative_model_version(match),
+            ))
+        db.commit()
+        narratives = db.query(Narrative).filter(
+            Narrative.match_id == match_id,
+            Narrative.style == style,
+        ).order_by(Narrative.card_index).all()
 
     if narratives:
         cards = []
@@ -274,3 +331,31 @@ async def get_narrative(
         "cards": cards,
         "card_count": len(cards),
     }
+
+
+def _should_refresh_local_narratives(match: Match, narratives: list[Narrative]) -> bool:
+    if not narratives:
+        return False
+    if not all(is_local_narrative_model(n.model_version) for n in narratives):
+        return False
+    current_version = get_local_narrative_model_version(match)
+    return any(n.model_version != current_version for n in narratives)
+
+
+def _has_match_details(match: Match) -> bool:
+    return bool(match.events or match.stats or match.performances)
+
+
+def _should_attempt_detail_sync(match: Match) -> bool:
+    return match.status in DETAIL_SYNC_STATUSES and not _has_match_details(match)
+
+
+async def _sync_missing_match_details(db: Session, match: Match) -> bool:
+    if not _should_attempt_detail_sync(match):
+        return False
+    try:
+        return await sync_match_details_if_stale(db, match)
+    except Exception:
+        # Detail data improves the report, but the page should still render from
+        # the latest score if the external feed is temporarily unavailable.
+        return False

@@ -4,6 +4,8 @@ import { fetchMatches } from "../api/client";
 import type { MatchSummary } from "../api/client";
 import MatchCard from "../components/MatchCard";
 
+const PRODUCT_TIME_ZONE = "Asia/Shanghai";
+
 export default function HomePage() {
   const navigate = useNavigate();
   const [todayMatches, setTodayMatches] = useState<MatchSummary[]>([]);
@@ -114,11 +116,16 @@ export default function HomePage() {
 
 function getRelativeDate(offsetDays: number): string {
   const date = new Date();
-  date.setDate(date.getDate() + offsetDays);
-  const year = date.getFullYear();
-  const month = `${date.getMonth() + 1}`.padStart(2, "0");
-  const day = `${date.getDate()}`.padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  date.setUTCDate(date.getUTCDate() + offsetDays);
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: PRODUCT_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
 }
 
 export function AppHeader() {

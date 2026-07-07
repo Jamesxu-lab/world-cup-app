@@ -7,11 +7,14 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.core.config import get_settings
 from app.core.database import SessionLocal
+from app.models.match import Match
 from app.services.data_ingestion import save_match_to_db
 from app.services.football_api import FootballAPI, FootballAPIError
+from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 _last_product_date_sync: dict[str, datetime] = {}
+_last_fixture_detail_sync: dict[int, datetime] = {}
 
 
 def get_yesterday_date() -> str:
@@ -39,6 +42,18 @@ def get_relative_product_date(offset_days: int) -> str:
     tz = get_product_timezone()
     now = datetime.now(tz) if tz else datetime.now()
     return (now + timedelta(days=offset_days)).date().isoformat()
+
+
+def get_recent_completed_product_dates(days: int = 3) -> list[str]:
+    """Return recent product dates before today, newest first."""
+    if days < 1:
+        return []
+
+    today = date_cls.fromisoformat(get_today_date())
+    return [
+        (today - timedelta(days=offset)).isoformat()
+        for offset in range(1, days + 1)
+    ]
 
 
 def get_api_dates_for_product_date(date_str: str) -> list[str]:
@@ -146,6 +161,60 @@ async def sync_product_date_if_stale(
     _last_product_date_sync[date_str] = now
     logger.info("Synced %s World Cup fixtures for product date %s", count, date_str)
     return count
+
+
+async def sync_match_details_if_stale(
+    db: Session,
+    match: Match,
+    *,
+    ttl_seconds: int | None = None,
+) -> bool:
+    """Best-effort throttled detail sync for one started or completed fixture."""
+    settings = get_settings()
+    if not settings.api_football_key:
+        logger.info("Match detail sync skipped for fixture %s: API_FOOTBALL_KEY is empty", match.fixture_id)
+        return False
+
+    ttl = settings.match_list_sync_ttl_seconds if ttl_seconds is None else ttl_seconds
+    now = datetime.now(timezone.utc)
+    last_sync = _last_fixture_detail_sync.get(match.fixture_id)
+    if last_sync and (now - last_sync).total_seconds() < ttl:
+        return False
+
+    api = FootballAPI()
+    fixture = await api.get_fixture_by_id(match.fixture_id)
+    if not fixture:
+        logger.info("Match detail sync skipped: fixture %s not found", match.fixture_id)
+        _last_fixture_detail_sync[match.fixture_id] = now
+        return False
+
+    match_data = await api.get_full_match_data(match.fixture_id)
+    save_match_to_db(db, fixture, match_data)
+    _last_fixture_detail_sync[match.fixture_id] = now
+    logger.info("Synced detail data for fixture %s", match.fixture_id)
+    return True
+
+
+async def sync_recent_completed_product_dates(
+    *,
+    days: int = 3,
+    with_details: bool = False,
+) -> dict[str, int]:
+    """Best-effort sync for recent completed product dates used by history."""
+    results: dict[str, int] = {}
+    for date_str in get_recent_completed_product_dates(days):
+        try:
+            results[date_str] = await sync_product_date_if_stale(
+                date_str,
+                with_details=with_details,
+            )
+        except FootballAPIError as exc:
+            results[date_str] = 0
+            logger.warning("Recent match sync failed for %s: %s", date_str, exc)
+        except Exception:
+            results[date_str] = 0
+            logger.exception("Unexpected recent match sync failure for %s", date_str)
+    return results
 
 
 async def sync_yesterday_matches_on_startup() -> None:

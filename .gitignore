@@ -21,6 +21,9 @@ frontend/dist/
 *.db-shm
 **/data/chromadb/
 
+# ── Local documents ──
+MVP技术方案与开发计划.md
+
 # ── IDE ──
 .idea/
 .vscode/

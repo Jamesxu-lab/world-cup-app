@@ -4,6 +4,7 @@ MVP 策略：优先用叙事卡片的开篇标题；没有叙事数据时用规�
 """
 from app.models.match import Match, Narrative
 from app.i18n import get_team_cn
+from app.services.fallback_narrative import is_local_narrative_model
 
 
 def generate_hook(match: Match) -> str:
@@ -13,18 +14,22 @@ def generate_hook(match: Match) -> str:
     """
     # 尝试从已生成的 AI 叙事中获取开篇标题；规则兜底卡片不适合作为列表钩子。
     for narrative in match.narratives:
-        if narrative.model_version == "fallback-v1":
+        if _is_fallback_narrative(narrative):
             continue
         if narrative.style == "funny" and narrative.card_index == 1 and narrative.title:
             return narrative.title
     for narrative in match.narratives:
-        if narrative.model_version == "fallback-v1":
+        if _is_fallback_narrative(narrative):
             continue
         if narrative.style == "formal" and narrative.card_index == 1 and narrative.title:
             return narrative.title
 
     # 规则兜底
     return _rule_based_hook(match)
+
+
+def _is_fallback_narrative(narrative: Narrative) -> bool:
+    return is_local_narrative_model(narrative.model_version)
 
 
 def _rule_based_hook(match: Match) -> str:
