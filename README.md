@@ -4,11 +4,7 @@
 
 「晨报球搭子」是一个面向 2026 美加墨世界杯的移动优先 H5 应用。它把凌晨结束的比赛整理成中文叙事卡片、关键事件、技术统计和 AI 追问，让用户早上打开手机就能快速补完昨晚的比赛。
 
-线上访问：
-
-- 首页：http://182.92.114.199
-- 冠军预测：http://182.92.114.199/predictions
-- 健康检查：http://182.92.114.199/health
+本文基于当前 Git 仓库中已跟踪的代码、配置、数据快照和文档整理。仓库已包含前后端源码、Docker/Render 部署配置、示例环境变量、冠军预测快照、SQLite 示例数据库和 H5 部署说明。
 
 ## 核心功能
 
@@ -40,7 +36,7 @@ FastAPI + SQLAlchemy + SQLite
 - 后端：FastAPI、Uvicorn、SQLAlchemy、Pydantic Settings、HTTPX。
 - 数据：默认 SQLite，后续可迁移到 PostgreSQL；预测和临时数据保存在 `backend/data`。
 - AI：OpenAI 兼容接口，支持通过 `OPENAI_BASE_URL` 接入不同模型服务。
-- 部署：支持 Docker 单服务部署，也支持主机模式用 systemd 直接运行 FastAPI。
+- 部署：仓库内置 Docker 单服务部署和 Render Blueprint 配置。
 
 ## 项目结构
 
@@ -66,7 +62,8 @@ FastAPI + SQLAlchemy + SQLite
 ├── Dockerfile
 ├── render.yaml               # Render Blueprint
 ├── DEPLOY_H5.md              # H5 部署指南
-└── 部署步骤.md                # 当前服务器部署记录
+├── CHANGELOG.md              # 迭代变更记录
+└── 2026_World_Cup_Results.md # 2026 世界杯结果与预测输入资料
 ```
 
 ## 本地开发
@@ -79,22 +76,26 @@ python -m venv .venv
 .venv/bin/pip install -r requirements.txt
 ```
 
-创建 `backend/.env`：
+仓库提供了 `backend/.env.example`，可复制为 `backend/.env` 后填入自己的密钥：
 
 ```bash
 DATABASE_URL=sqlite:///./data/worldcup.db
 OPENAI_API_KEY=your_openai_or_compatible_key
-OPENAI_BASE_URL=https://api.openai.com/v1
-LLM_MODEL=gpt-4o
-CHAT_MODEL=
+OPENAI_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+LLM_MODEL=qwen3.6-flash-2026-04-16
+CHAT_MODEL=qwen3.6-flash-2026-04-16
 API_FOOTBALL_KEY=your_api_football_key
 API_FOOTBALL_BASE_URL=https://v3.football.api-sports.io
 APP_TIMEZONE=Asia/Shanghai
 SYNC_YESTERDAY_ON_STARTUP=true
-SYNC_TODAY_ON_STARTUP=true
-SYNC_STARTUP_WITH_DETAILS=false
+SYNC_STARTUP_WITH_DETAILS=true
 PREDICTION_SYNC_ON_STARTUP=true
 PREDICTION_SYNC_BLOCK_STARTUP=false
+PREDICTION_SYNC_MAX_AGE_HOURS=24
+PREDICTION_SYNC_DAILY_ENABLED=false
+PREDICTION_SYNC_DAILY_TIME=10:00
+PREDICTION_SYNC_INJURIES_PATH=
+CHROMA_PERSIST_DIR=./data/chromadb
 CORS_ORIGINS=http://localhost:8000,http://localhost:5173
 ```
 
@@ -195,36 +196,19 @@ http://127.0.0.1:8000/docs
 
 推荐生产形态是单服务部署：先执行前端构建，再由 FastAPI 同源托管前端 SPA 和 `/api/v1` 接口。
 
-当前线上服务采用主机模式部署：
+仓库当前提供两种可复用的部署入口：
 
-- 代码目录：`/srv/worldcup-app`
-- 持久化数据目录：`/srv/world-cup-app-data`
-- 服务管理：`systemd` 服务 `worldcup-app`
-- 监听地址：`0.0.0.0:80`
+- `Dockerfile`：多阶段构建，先构建 `frontend/dist`，再由 FastAPI 托管前端静态文件和 API。
+- `render.yaml`：Render Blueprint，使用 Docker Web Service、`/health` 健康检查和无持久化数据盘的免费验证配置。
 
-常用运维命令：
-
-```bash
-systemctl status worldcup-app
-journalctl -u worldcup-app -f
-systemctl restart worldcup-app
-```
-
-更新线上代码：
-
-```bash
-cd /srv/worldcup-app
-git pull
-systemctl restart worldcup-app
-```
-
-更完整的 Docker、Render 和 H5 部署说明见 `DEPLOY_H5.md`。
+更完整的 Docker、Render 和 H5 部署说明见 `DEPLOY_H5.md`。如需传统服务器部署，可参考同一文档中的前后端分离方案自行配置进程管理和反向代理。
 
 ## 数据与环境说明
 
 - 默认数据库为 `backend/data/worldcup.db`，由后端启动时自动初始化。
 - `backend/data/prediction_snapshot.json` 和 `backend/data/champion_prediction_cache.json` 用于冠军预测快照和缓存。
-- 启动时可通过 `SYNC_YESTERDAY_ON_STARTUP`、`SYNC_TODAY_ON_STARTUP`、`SYNC_STARTUP_WITH_DETAILS` 控制比赛数据同步。
+- `2026_World_Cup_Results.md` 保存了当前仓库中的 2026 世界杯结果与预测分析资料。
+- 启动时可通过 `SYNC_YESTERDAY_ON_STARTUP`、`SYNC_STARTUP_WITH_DETAILS` 控制比赛数据同步。
 - 外部 API 短暂失败时，比赛列表会优先返回本地已有数据，避免页面完全不可用。
 - 若没有配置 `OPENAI_API_KEY`，依赖 LLM 的战报生成和追问能力会受限。
 - 若没有配置 `API_FOOTBALL_KEY`，实时比赛同步会受限，但本地快照和已有数据库内容仍可用于演示部分页面。
@@ -239,4 +223,8 @@ cd backend && PYTHONPATH=. .venv/bin/python scripts/test_data_pipeline.py
 curl http://127.0.0.1:8000/health
 ```
 
-仓库中还保留了 `qa-report/`，用于记录移动端、桌面端、页面跳转、聊天和预测页的历史 QA 截图与报告。
+最近一次 README 更新前，本地已执行并通过：
+
+- `frontend`: `npm run lint`
+- `frontend`: `npm run build`
+- `backend`: `.venv/bin/python scripts/test_data_pipeline.py`
