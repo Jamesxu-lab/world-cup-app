@@ -21,6 +21,8 @@ def parse_fixture_to_match(fixture_data: dict) -> dict:
     league = fixture_data["league"]
     teams = fixture_data["teams"]
     goals = fixture_data["goals"]
+    score = fixture_data.get("score") or {}
+    penalty = score.get("penalty") or {}
 
     return {
         "fixture_id": fixture["id"],
@@ -28,6 +30,8 @@ def parse_fixture_to_match(fixture_data: dict) -> dict:
         "away_team": teams["away"]["name"],
         "home_score": goals.get("home"),
         "away_score": goals.get("away"),
+        "penalty_home_score": penalty.get("home"),
+        "penalty_away_score": penalty.get("away"),
         "match_date": datetime.fromisoformat(fixture["date"].replace("Z", "+00:00")),
         "group_name": league.get("round", "").replace("Group ", ""),
         "round": league.get("round", "group_stage"),

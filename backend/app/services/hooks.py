@@ -5,6 +5,7 @@ MVP 策略：优先用叙事卡片的开篇标题；没有叙事数据时用规�
 from app.models.match import Match, Narrative
 from app.i18n import get_team_cn
 from app.services.fallback_narrative import is_local_narrative_model
+from app.services.scoreline import format_penalty_result, has_penalty_score
 
 
 def generate_hook(match: Match) -> str:
@@ -40,6 +41,11 @@ def _rule_based_hook(match: Match) -> str:
 
     if h_score is None or a_score is None:
         return f"{home} 对阵 {away}"
+
+    if match.status == "PEN" and has_penalty_score(match):
+        result = format_penalty_result(match)
+        if result:
+            return f"{home} {h_score}-{a_score} {away}，{result}"
 
     # 查找进球最多的球员
     top_scorer = None

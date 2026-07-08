@@ -18,6 +18,8 @@ class Match(Base):
     away_team = Column(String(100), nullable=False)
     home_score = Column(Integer, nullable=True)
     away_score = Column(Integer, nullable=True)
+    penalty_home_score = Column(Integer, nullable=True)
+    penalty_away_score = Column(Integer, nullable=True)
     match_date = Column(DateTime, nullable=False, index=True)
     group_name = Column(String(50), nullable=True)
     round = Column(String(50), nullable=True, default="group_stage")

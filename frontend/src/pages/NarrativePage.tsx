@@ -130,6 +130,13 @@ export default function NarrativePage() {
   }
 
   const roundLabel = match?.round || "";
+  const penaltyScore =
+    match?.penalty_home_score !== null &&
+    match?.penalty_home_score !== undefined &&
+    match?.penalty_away_score !== null &&
+    match?.penalty_away_score !== undefined
+      ? `点球 ${match.penalty_home_score} - ${match.penalty_away_score}`
+      : "";
 
   return (
     <div style={{ paddingBottom: 80 }}>
@@ -160,7 +167,9 @@ export default function NarrativePage() {
               <div className="score-hero-nums">
                 {match.home_score ?? "-"} - {match.away_score ?? "-"}
               </div>
-              {match.status_code === "PEN" && <div className="score-hero-vs">点球决胜</div>}
+              {match.status_code === "PEN" && (
+                <div className="score-hero-vs">{penaltyScore || "点球决胜"}</div>
+              )}
             </div>
             <div className="score-hero-team">
               <span className="flag">{getTeamFlag(match.away_team)}</span>

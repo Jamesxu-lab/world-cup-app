@@ -11,6 +11,7 @@ from app.core.config import get_settings
 from app.models.match import Match, Narrative
 from app.services.chat_prompt import CHAT_SYSTEM, CHAT_USER_TEMPLATE
 from app.i18n import get_team_cn, get_stadium_cn, get_round_cn, get_status_cn
+from app.services.scoreline import format_penalty_result, format_scoreline
 
 # ── 持久 OpenAI 客户端 ──
 _settings = get_settings()
@@ -43,7 +44,7 @@ def _build_context_cached(match_id: str) -> str:
         home_cn = get_team_cn(match.home_team)
         away_cn = get_team_cn(match.away_team)
         lines = [
-            f"{home_cn} {match.home_score}-{match.away_score} {away_cn}",
+            format_scoreline(match),
             f"{get_round_cn(match.round) if match.round else ''} | {get_stadium_cn(match.stadium) if match.stadium else ''}",
             "",
             "进球:",
@@ -114,8 +115,12 @@ def _fallback_answer(match_id: str, question: str = "") -> str:
             score = f"{home} vs {away}"
             result = f"这场比赛目前状态是{status}，还没有比分。"
         else:
-            score = f"{home} {match.home_score}-{match.away_score} {away}"
-            result = f"当前记录的比分是 {score}，状态是{status}。"
+            score = format_scoreline(match)
+            penalty_result = format_penalty_result(match)
+            if match.status == "PEN" and penalty_result:
+                result = f"当前记录的比分是 {score}，{penalty_result}，状态是{status}。"
+            else:
+                result = f"当前记录的比分是 {score}，状态是{status}。"
 
         q = question.strip()
         if any(word in q for word in ["比分", "结果", "几比几", "赢", "输"]):

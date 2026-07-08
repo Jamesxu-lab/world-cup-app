@@ -5,6 +5,12 @@ from hashlib import sha1
 
 from app.i18n import get_team_cn, get_stadium_cn, get_round_cn, get_status_cn
 from app.models.match import Match
+from app.services.scoreline import (
+    format_penalty_result,
+    format_scoreline,
+    has_penalty_score,
+    penalty_winner_name,
+)
 
 
 STYLE_NAMES = {
@@ -19,11 +25,7 @@ LOCAL_NARRATIVE_PREFIXES = ("fallback-v1", FALLBACK_MODEL_VERSION, DETAIL_MODEL_
 
 
 def _scoreline(match: Match) -> str:
-    home = get_team_cn(match.home_team)
-    away = get_team_cn(match.away_team)
-    if match.home_score is None or match.away_score is None:
-        return f"{home} vs {away}"
-    return f"{home} {match.home_score}-{match.away_score} {away}"
+    return format_scoreline(match)
 
 
 def _result_sentence(match: Match) -> str:
@@ -35,6 +37,11 @@ def _result_sentence(match: Match) -> str:
 
     if h_score is None or a_score is None:
         return f"{home} 与 {away} 的比赛目前状态为{status}，开球后这里会更新比分和战报。"
+
+    if match.status == "PEN" and has_penalty_score(match):
+        penalty_result = format_penalty_result(match)
+        if penalty_result:
+            return f"{home} 与 {away} 常规时间/加时后 {h_score}-{a_score} 战平，{penalty_result}，比赛状态为{status}。"
 
     result_verb = "击败" if match.status in {"FT", "AET", "PEN"} else "领先"
     if h_score > a_score:
@@ -76,6 +83,8 @@ def get_local_narrative_model_version(match: Match) -> str:
         str(match.status or ""),
         str(match.home_score),
         str(match.away_score),
+        str(match.penalty_home_score),
+        str(match.penalty_away_score),
         str(match.match_date),
         str(match.round or ""),
         str(match.stadium or ""),
@@ -206,6 +215,10 @@ def _player_sentence(match: Match) -> str:
 
 
 def _winner_name(match: Match) -> str:
+    if match.status == "PEN":
+        penalty_winner = penalty_winner_name(match)
+        if penalty_winner:
+            return penalty_winner
     if match.home_score is None or match.away_score is None:
         return get_team_cn(match.home_team)
     if match.home_score > match.away_score:

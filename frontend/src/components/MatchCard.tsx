@@ -12,10 +12,15 @@ export default function MatchCard({ match, interactive = true }: Props) {
     match.home_score !== null && match.away_score !== null
       ? `${match.home_score} - ${match.away_score}`
       : "vs";
+  const penaltyScore =
+    match.penalty_home_score !== null && match.penalty_away_score !== null
+      ? `点球 ${match.penalty_home_score} - ${match.penalty_away_score}`
+      : "";
+  const scoreLabel = match.status_code === "PEN" ? penaltyScore || "点球决胜" : "";
 
   const roundLabel = match.round || "";
   const stadiumLabel = match.stadium || "";
-  const matchLabel = `${match.home_team} ${score} ${match.away_team}，${roundLabel}，${stadiumLabel}`;
+  const matchLabel = `${match.home_team} ${score} ${match.away_team}${scoreLabel ? `，${scoreLabel}` : ""}，${roundLabel}，${stadiumLabel}`;
 
   const content = (
     <>
@@ -30,7 +35,7 @@ export default function MatchCard({ match, interactive = true }: Props) {
         </div>
         <div className="match-card-score">
           <div className="score-num">{score}</div>
-          {match.status_code === "PEN" && <div className="score-label">点球决胜</div>}
+          {scoreLabel && <div className="score-label">{scoreLabel}</div>}
         </div>
         <div className="match-card-team">
           <span className="flag">{getTeamFlag(match.away_team)}</span>

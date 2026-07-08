@@ -18,6 +18,8 @@ export interface MatchSummary {
   away_team: string;
   home_score: number | null;
   away_score: number | null;
+  penalty_home_score: number | null;
+  penalty_away_score: number | null;
   match_date: string;
   match_day?: string;
   round: string;
