@@ -75,20 +75,24 @@ if _frontend_dist.is_dir():
         # 挂载静态资源目录（JS/CSS/图片等）
         app.mount("/assets", StaticFiles(directory=str(_frontend_assets)), name="static-assets")
 
+    def _frontend_file_response(path: Path, *, no_cache: bool = False) -> FileResponse:
+        headers = {"Cache-Control": "no-cache"} if no_cache else None
+        return FileResponse(path, headers=headers)
+
     # SPA 回退路由：根目录静态文件直接返回，其他非 API 路径返回 index.html。
     @app.get("/{path:path}", include_in_schema=False)
     async def serve_spa_or_public_asset(path: str):
         if "/" in path:
             index_file = _frontend_dist / "index.html"
             if index_file.exists():
-                return FileResponse(index_file)
+                return _frontend_file_response(index_file, no_cache=True)
             return {"detail": "Frontend not built. Run 'npm run build' in frontend/."}
 
         asset_file = _frontend_dist / path
         if asset_file.is_file():
-            return FileResponse(asset_file)
+            return _frontend_file_response(asset_file, no_cache=asset_file.name == "index.html")
 
         index_file = _frontend_dist / "index.html"
         if index_file.exists():
-            return FileResponse(index_file)
+            return _frontend_file_response(index_file, no_cache=True)
         return {"detail": "Frontend not built. Run 'npm run build' in frontend/."}
